@@ -301,7 +301,11 @@ function applyProjectChange(p){
 // ═══════════════════════════════════════════════
 async function boot(){
   try {
-    const { data: { session } } = await sb.auth.getSession();
+    // Timeout getSession so a corrupted/hanging auth state can't lock the UI.
+    const session = await Promise.race([
+      sb.auth.getSession().then(r => r.data.session || null),
+      new Promise(res => setTimeout(() => { console.warn('getSession timed out — forcing sign-in'); res(null); }, 4000))
+    ]);
     _user = session?.user || null;
     renderAuthBar();
     if(!_user){ showAuth(); return; }
@@ -314,6 +318,12 @@ async function boot(){
     alert('Failed to start: '+(e.message||e));
     showAuth();
   }
+}
+
+// Emergency reset — clear local session state and reload
+function hardReset(){
+  try { Object.keys(localStorage).filter(k => k.startsWith('sb-')).forEach(k => localStorage.removeItem(k)); } catch(e){}
+  location.reload();
 }
 
 sb.auth.onAuthStateChange(async (event, session) => {
