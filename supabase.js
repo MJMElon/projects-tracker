@@ -1,0 +1,349 @@
+// ═══════════════════════════════════════════════
+// SUPABASE CLIENT + AUTH + DATA LAYER
+// ═══════════════════════════════════════════════
+const SUPABASE_URL = 'https://kibqjztozokohqmhqqqf.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtpYnFqenRvem9rb2hxbWhxcXFmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyMzQzNjIsImV4cCI6MjA4OTgxMDM2Mn0.J7qJUZhWXYf5b9oey4wXJkjdi66jomEMw_NeV9NWF7M';
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  db: { schema: 'project_tracker' },
+  auth: { persistSession: true, autoRefreshToken: true }
+});
+
+let _user = null;
+let _snap = { projects: {}, tasks: {} };      // id -> JSON string (for diff)
+let _syncTimer = null;
+let _syncing = false;
+let _pendingSync = false;
+
+// ── task shape mapping (client ↔ db) ──────────────────────────
+// Client task: {id, projectId, title, desc, phase, urgency, assignee, due, startDate,
+//               done, completedAt, startedAt, screenshots[], subtasks[], history[],
+//               createdAt, order}
+// DB row:      {id, project_id, title, descr, phase, urgency, assignee, due, start_date,
+//               done, completed_at, started_at, screenshots, subtasks, history, created_at,
+//               created_by}    (note: "order" + "phaseOrder" stashed into row as extras via jsonb? No.
+//                                We add an "extras" jsonb later if needed; for now persist order inside
+//                                subtasks/history jsonb already covers subtasks. For task.order we reuse
+//                                created_at ordering as fallback; persist as column.)
+function taskToRow(t, userId){
+  return {
+    id: t.id,
+    project_id: t.projectId,
+    created_by: userId || null,
+    title: t.title || '',
+    descr: t.desc || '',
+    phase: t.phase || '',
+    urgency: t.urgency || 'medium',
+    assignee: t.assignee || '',
+    due: t.due || '',
+    start_date: t.startDate || '',
+    done: !!t.done,
+    completed_at: t.completedAt || null,
+    started_at: t.startedAt || null,
+    screenshots: t.screenshots || [],
+    subtasks: t.subtasks || [],
+    history: t.history || [],
+    created_at: t.createdAt || Date.now(),
+    order_idx: (typeof t.order === 'number') ? t.order : null
+  };
+}
+function rowToTask(r){
+  return {
+    id: r.id,
+    projectId: r.project_id,
+    title: r.title,
+    desc: r.descr || '',
+    phase: r.phase,
+    urgency: r.urgency,
+    assignee: r.assignee || '',
+    due: r.due || '',
+    startDate: r.start_date || '',
+    done: !!r.done,
+    completedAt: r.completed_at,
+    startedAt: r.started_at,
+    screenshots: r.screenshots || [],
+    subtasks: r.subtasks || [],
+    history: r.history || [],
+    createdAt: r.created_at,
+    order: (typeof r.order_idx === 'number') ? r.order_idx : undefined
+  };
+}
+function projectToRow(p, userId){
+  return { id: p.id, name: p.name, phases: p.phases || [], owner_id: p.ownerId || userId };
+}
+function rowToProject(r){
+  return { id: r.id, name: r.name, phases: r.phases || [], ownerId: r.owner_id };
+}
+
+function isUuid(s){ return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s||''); }
+
+// ═══════════════════════════════════════════════
+// HYDRATE (load from server into S)
+// ═══════════════════════════════════════════════
+async function hydrate(){
+  const { data: projects, error: pe } = await sb.from('projects').select('*').order('created_at',{ascending:true});
+  if(pe){
+    console.error('load projects', pe);
+    const hint = /schema|not found|relation/i.test(pe.message||'')
+      ? '\n\nFix: Supabase Dashboard → Settings → API → Exposed schemas — add "project_tracker", then reload.'
+      : '';
+    alert('Failed to load projects: '+pe.message+hint);
+    return;
+  }
+  const { data: tasks, error: te } = await sb.from('tasks').select('*');
+  if(te){ console.error('load tasks', te); alert('Failed to load tasks: '+te.message); return; }
+
+  S.projects = (projects||[]).map(rowToProject);
+  S.tasks = (tasks||[]).map(rowToTask);
+  if(S.projects.length && !S.projects.find(p=>p.id===S.activeProject)){
+    S.activeProject = S.projects[0].id;
+  }
+
+  // seed snapshot for diff
+  _snap = { projects: {}, tasks: {} };
+  S.projects.forEach(p => { _snap.projects[p.id] = JSON.stringify(projectToRow(p, _user?.id)); });
+  S.tasks.forEach(t => { _snap.tasks[t.id] = JSON.stringify(taskToRow(t, _user?.id)); });
+}
+
+// ═══════════════════════════════════════════════
+// PERSIST (diff & push)
+// ═══════════════════════════════════════════════
+async function syncNow(){
+  if(!_user) return;
+  if(_syncing){ _pendingSync = true; return; }
+  _syncing = true;
+  try {
+    // PROJECTS
+    const projIds = new Set(S.projects.map(p=>p.id));
+    const projectUpserts = [];
+    S.projects.forEach(p=>{
+      const row = projectToRow(p, _user.id);
+      const key = JSON.stringify(row);
+      if(_snap.projects[p.id] !== key){ projectUpserts.push(row); _snap.projects[p.id] = key; }
+    });
+    const projDeletes = Object.keys(_snap.projects).filter(id => !projIds.has(id));
+    if(projectUpserts.length){
+      const { error } = await sb.from('projects').upsert(projectUpserts);
+      if(error){ console.error('project upsert', error); alert('Project save failed: '+error.message); }
+    }
+    if(projDeletes.length){
+      const { error } = await sb.from('projects').delete().in('id', projDeletes);
+      if(error){ console.error('project delete', error); alert('Project delete failed: '+error.message); }
+      projDeletes.forEach(id => delete _snap.projects[id]);
+    }
+
+    // TASKS
+    const taskIds = new Set(S.tasks.map(t=>t.id));
+    const taskUpserts = [];
+    S.tasks.forEach(t=>{
+      if(!t.projectId || !isUuid(t.projectId)) return; // skip orphan/local-only
+      const row = taskToRow(t, _user.id);
+      const key = JSON.stringify(row);
+      if(_snap.tasks[t.id] !== key){ taskUpserts.push(row); _snap.tasks[t.id] = key; }
+    });
+    const taskDeletes = Object.keys(_snap.tasks).filter(id => !taskIds.has(id));
+    if(taskUpserts.length){
+      const { error } = await sb.from('tasks').upsert(taskUpserts);
+      if(error){ console.error('task upsert', error); alert('Save failed: '+error.message); }
+    }
+    if(taskDeletes.length){
+      const { error } = await sb.from('tasks').delete().in('id', taskDeletes);
+      if(error) console.error('task delete', error);
+      taskDeletes.forEach(id => delete _snap.tasks[id]);
+    }
+  } finally {
+    _syncing = false;
+    if(_pendingSync){ _pendingSync = false; syncNow(); }
+  }
+}
+function queueSync(){
+  clearTimeout(_syncTimer);
+  _syncTimer = setTimeout(syncNow, 350);
+}
+
+// ═══════════════════════════════════════════════
+// AUTH UI
+// ═══════════════════════════════════════════════
+function showAuth(){
+  document.getElementById('authOverlay').classList.add('open');
+  document.querySelector('body').classList.add('locked');
+  const loading = document.getElementById('authCardLoading');
+  const form = document.getElementById('authCardForm');
+  if(loading) loading.style.display = 'none';
+  if(form) form.style.display = '';
+}
+function hideAuth(){
+  document.getElementById('authOverlay').classList.remove('open');
+  document.querySelector('body').classList.remove('locked');
+}
+function setAuthMsg(msg, isError){
+  const el = document.getElementById('authMsg');
+  el.textContent = msg || '';
+  el.style.color = isError ? 'var(--red)' : 'var(--accent)';
+}
+
+async function doSignIn(){
+  const email = document.getElementById('authEmail').value.trim();
+  const password = document.getElementById('authPassword').value;
+  if(!email || !password){ setAuthMsg('Email and password required', true); return; }
+  setAuthMsg('Signing in…', false);
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  if(error){ setAuthMsg(error.message, true); return; }
+  // onAuthStateChange will hydrate
+}
+async function doSignUp(){
+  const email = document.getElementById('authEmail').value.trim();
+  const password = document.getElementById('authPassword').value;
+  if(!email || !password){ setAuthMsg('Email and password required', true); return; }
+  if(password.length < 6){ setAuthMsg('Password must be at least 6 characters', true); return; }
+  setAuthMsg('Creating account…', false);
+  const { data, error } = await sb.auth.signUp({ email, password });
+  if(error){ setAuthMsg(error.message, true); return; }
+  if(data.user && !data.session){
+    setAuthMsg('Check your email to confirm, then sign in.', false);
+  } else {
+    setAuthMsg('Account created.', false);
+  }
+}
+async function doSignOut(){
+  await sb.auth.signOut();
+  S.projects = []; S.tasks = []; S.activeProject = null;
+  _snap = { projects: {}, tasks: {} };
+  render();
+  showAuth();
+  renderAuthBar();
+}
+
+function renderAuthBar(){
+  const el = document.getElementById('authBar');
+  if(!el) return;
+  el.innerHTML = _user
+    ? `<span class="auth-email">${_user.email}</span><button class="btn btn-ghost btn-sm" onclick="doSignOut()">Sign out</button>`
+    : '';
+}
+
+// ═══════════════════════════════════════════════
+// INVITE MEMBER
+// ═══════════════════════════════════════════════
+function openInviteModal(){
+  const proj = getProject(); if(!proj) return;
+  document.getElementById('inviteEmail').value = '';
+  document.getElementById('inviteMsg').textContent = '';
+  document.getElementById('inviteProjName').textContent = proj.name;
+  document.getElementById('inviteModal').classList.add('open');
+  setTimeout(()=>document.getElementById('inviteEmail').focus(), 300);
+}
+function closeInviteModal(){ document.getElementById('inviteModal').classList.remove('open'); }
+async function submitInvite(){
+  const proj = getProject(); if(!proj) return;
+  const email = document.getElementById('inviteEmail').value.trim();
+  const msgEl = document.getElementById('inviteMsg');
+  if(!email){ msgEl.style.color='var(--red)'; msgEl.textContent='Email required'; return; }
+  msgEl.style.color='var(--text2)'; msgEl.textContent='Inviting…';
+  const { data, error } = await sb.rpc('invite_member', { pid: proj.id, email_in: email });
+  if(error){ msgEl.style.color='var(--red)'; msgEl.textContent=error.message; return; }
+  if(data && data.ok === false){ msgEl.style.color='var(--red)'; msgEl.textContent=data.error; return; }
+  msgEl.style.color='var(--accent)'; msgEl.textContent='Added.';
+  setTimeout(closeInviteModal, 900);
+}
+
+// ═══════════════════════════════════════════════
+// REALTIME (optional multi-user updates)
+// ═══════════════════════════════════════════════
+let _realtimeCh = null;
+function subscribeRealtime(){
+  if(_realtimeCh) { try{ sb.removeChannel(_realtimeCh); }catch(e){} }
+  _realtimeCh = sb.channel('pt-changes')
+    .on('postgres_changes', { event:'*', schema:'project_tracker', table:'tasks' }, payload => {
+      // Ignore our own writes (optimistic)
+      if(_syncing) return;
+      applyTaskChange(payload);
+    })
+    .on('postgres_changes', { event:'*', schema:'project_tracker', table:'projects' }, payload => {
+      if(_syncing) return;
+      applyProjectChange(payload);
+    })
+    .subscribe();
+}
+function applyTaskChange(p){
+  if(p.eventType === 'DELETE'){
+    const id = p.old?.id;
+    S.tasks = S.tasks.filter(t=>t.id!==id);
+    delete _snap.tasks[id];
+  } else {
+    const t = rowToTask(p.new);
+    const i = S.tasks.findIndex(x=>x.id===t.id);
+    if(i>=0) S.tasks[i] = t; else S.tasks.push(t);
+    _snap.tasks[t.id] = JSON.stringify(taskToRow(t, _user?.id));
+  }
+  render(); if(_drawerId) { const t=S.tasks.find(x=>x.id===_drawerId); if(t) renderDrawer(); else closeDrawer(); }
+}
+function applyProjectChange(p){
+  if(p.eventType === 'DELETE'){
+    const id = p.old?.id;
+    S.projects = S.projects.filter(x=>x.id!==id);
+    delete _snap.projects[id];
+    if(S.activeProject===id) S.activeProject = S.projects[0]?.id || null;
+  } else {
+    const pr = rowToProject(p.new);
+    const i = S.projects.findIndex(x=>x.id===pr.id);
+    if(i>=0) S.projects[i] = pr; else S.projects.push(pr);
+    _snap.projects[pr.id] = JSON.stringify(projectToRow(pr, _user?.id));
+  }
+  render();
+}
+
+// ═══════════════════════════════════════════════
+// BOOT
+// ═══════════════════════════════════════════════
+async function boot(){
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    _user = session?.user || null;
+    renderAuthBar();
+    if(!_user){ showAuth(); return; }
+    hideAuth();
+    await hydrate();
+    render();
+    subscribeRealtime();
+  } catch(e){
+    console.error('boot failed', e);
+    alert('Failed to start: '+(e.message||e));
+    showAuth();
+  }
+}
+
+sb.auth.onAuthStateChange(async (event, session) => {
+  _user = session?.user || null;
+  renderAuthBar();
+  if(event === 'SIGNED_IN'){
+    hideAuth();
+    await hydrate();
+    render();
+    subscribeRealtime();
+  } else if(event === 'SIGNED_OUT'){
+    showAuth();
+  }
+});
+
+// Kick things off (scripts are at end of body — DOM is already parsed)
+if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+else boot();
+
+// Allow sign-in form submit with Enter key
+document.addEventListener('keydown', e => {
+  if(e.key === 'Enter' && document.getElementById('authOverlay').classList.contains('open')){
+    const a = document.activeElement;
+    if(a && (a.id === 'authEmail' || a.id === 'authPassword')) doSignIn();
+  }
+  if(e.key === 'Enter' && document.getElementById('inviteModal').classList.contains('open')){
+    const a = document.activeElement;
+    if(a && a.id === 'inviteEmail') submitInvite();
+  }
+});
+
+// Backdrop close for invite modal
+document.addEventListener('click', e => {
+  const im = document.getElementById('inviteModal');
+  if(im && e.target === im) closeInviteModal();
+});

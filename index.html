@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vibe Tracker · MJM</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="board.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+
+<body>
+<!-- HEADER -->
+<header>
+  <div class="logo">Vibe<span>Tracker</span></div>
+  <div class="hactions">
+    <div class="auth-bar" id="authBar"></div>
+    <button class="btn btn-ghost btn-sm" id="inviteBtn" onclick="openInviteModal()" title="Invite a member to this project">👥 Invite</button>
+    <button class="btn btn-ghost btn-sm" id="reportBtn">📊 Report</button>
+    <button class="btn btn-primary btn-sm" onclick="openAddTask(null)">+ Task</button>
+  </div>
+</header>
+
+<!-- PROJECT BAR -->
+<div class="pbar" id="projectBar"></div>
+
+<!-- BOARD -->
+<div class="board-wrap">
+  <div class="board" id="board"></div>
+</div>
+
+<!-- DETAIL DRAWER -->
+<div class="drawer-overlay" id="drawerOverlay" onclick="closeDrawer()"></div>
+<div class="drawer" id="drawer">
+  <div style="padding:14px 18px 0;flex-shrink:0;display:none" id="drawerHandle"><div class="drawer-handle" style="display:block"></div></div>
+  <div class="drawer-head" id="drawerHead"></div>
+  <div class="drawer-body" id="drawerBody"></div>
+  <div class="drawer-foot" id="drawerFoot"></div>
+</div>
+
+<!-- LIGHTBOX -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <button class="lb-close" onclick="closeLightbox()">✕</button>
+  <img id="lbImg" src="" />
+</div>
+
+<!-- TASK FORM MODAL -->
+<div class="modal-overlay" id="taskModal">
+  <div class="modal">
+    <span class="mhandle"></span>
+    <div class="mtitle" id="mTitle">New Task</div>
+    <div class="field"><label>Title</label><input type="text" id="fTitle" placeholder="What needs to be done?" /></div>
+    <div class="field"><label>Description</label><textarea id="fDesc" placeholder="Details, links, notes..."></textarea></div>
+    <div class="frow">
+      <div class="field"><label>Phase</label><select id="fPhase"></select></div>
+      <div class="field"><label>Urgency</label>
+        <select id="fUrgency">
+          <option value="high">🔴 Urgent</option>
+          <option value="medium" selected>🟡 Medium</option>
+          <option value="low">🔵 Low</option>
+        </select>
+      </div>
+    </div>
+    <div class="frow">
+      <div class="field"><label>Start Date</label><input type="date" id="fStartDate" /></div>
+      <div class="field"><label>Due Date</label><input type="date" id="fDue" /></div>
+    </div>
+    <div class="frow">
+      <div class="field"><label>Assign To</label><input type="text" id="fAssignee" placeholder="@name" /></div>
+    </div>
+    <div class="mactions">
+      <button class="btn btn-ghost" onclick="closeTaskModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveTask()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- REOPEN MODAL -->
+<div class="modal-overlay" id="reopenModal">
+  <div class="modal">
+    <span class="mhandle"></span>
+    <div class="mtitle">↩ Reopen Task</div>
+    <div class="reopen-warn">This task was marked done. Reopening logs a reason and restarts the timer.</div>
+    <div class="field"><label>Reason</label><textarea id="fReopenReason" placeholder="e.g. Found a bug, Client rejected..." style="min-height:75px"></textarea></div>
+    <div class="mactions">
+      <button class="btn btn-ghost" onclick="closeReopenModal()">Cancel</button>
+      <button class="btn btn-orange" onclick="confirmReopen()">Reopen</button>
+    </div>
+  </div>
+</div>
+
+<!-- PROJECT MODAL -->
+<div class="modal-overlay" id="projectModal">
+  <div class="modal">
+    <span class="mhandle"></span>
+    <div class="mtitle">New Project</div>
+    <div class="field"><label>Name</label><input type="text" id="fProjectName" placeholder="e.g. Franchise Portal v2" /></div>
+    <div class="mactions">
+      <button class="btn btn-ghost" onclick="closeProjectModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveProject()">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- RENAME COLUMN MODAL -->
+<div class="modal-overlay" id="renameColModal">
+  <div class="modal">
+    <span class="mhandle"></span>
+    <div class="mtitle">Rename Phase</div>
+    <div class="field"><label>Phase Name</label><input type="text" id="fColName" /></div>
+    <div class="mactions">
+      <button class="btn btn-ghost" onclick="closeRenameCol()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveRenameCol()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- CTX MENU -->
+<div class="ctx" id="ctx">
+  <div class="citem" onclick="ctxEdit()">✏️ Edit</div>
+  <div class="citem" id="ctxToggleItem" onclick="ctxToggle()">✅ Mark Done</div>
+  <div class="cdiv"></div>
+  <div class="citem danger" onclick="ctxDelete()">🗑 Delete</div>
+</div>
+
+<!-- COL CTX MENU -->
+<div class="ctx" id="colCtx">
+  <div class="citem" onclick="colCtxRename()">✏️ Rename</div>
+  <div class="citem danger" onclick="colCtxDelete()">🗑 Delete Phase</div>
+</div>
+
+<!-- REPORT MODAL -->
+<div class="modal-overlay" id="reportModal">
+  <div class="modal" style="max-width:680px">
+    <span class="mhandle"></span>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+      <div class="mtitle" style="margin:0" id="reportTitle">Report</div>
+      <button class="btn btn-ghost btn-sm" onclick="closeReportModal()">✕</button>
+    </div>
+    <div id="reportContent"></div>
+  </div>
+</div>
+
+<!-- INVITE MEMBER MODAL -->
+<div class="modal-overlay" id="inviteModal">
+  <div class="modal">
+    <span class="mhandle"></span>
+    <div class="mtitle">👥 Invite Member</div>
+    <div style="color:var(--text2);font-size:13px;margin-bottom:12px">
+      Add someone to <strong id="inviteProjName" style="color:var(--text)"></strong>. They must have an account already.
+    </div>
+    <div class="field"><label>Email</label><input type="email" id="inviteEmail" placeholder="name@example.com" /></div>
+    <div id="inviteMsg" style="font-size:13px;min-height:18px;margin:4px 0 8px"></div>
+    <div class="mactions">
+      <button class="btn btn-ghost" onclick="closeInviteModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitInvite()">Invite</button>
+    </div>
+  </div>
+</div>
+
+<!-- AUTH OVERLAY (blocks app until signed in; starts open, boot() will hide it if session exists) -->
+<div class="auth-overlay open" id="authOverlay">
+  <div class="auth-card" id="authCardLoading">
+    <div class="auth-logo">Vibe<span>Tracker</span></div>
+    <div class="auth-sub">Loading…</div>
+  </div>
+  <div class="auth-card" id="authCardForm" style="display:none">
+    <div class="auth-logo">Vibe<span>Tracker</span></div>
+    <div class="auth-sub">Sign in to continue</div>
+    <div class="field"><label>Email</label><input type="email" id="authEmail" autocomplete="email" placeholder="you@example.com" /></div>
+    <div class="field"><label>Password</label><input type="password" id="authPassword" autocomplete="current-password" placeholder="••••••••" /></div>
+    <div id="authMsg" style="font-size:13px;min-height:18px;margin:4px 0 10px"></div>
+    <div class="auth-actions">
+      <button class="btn btn-primary" onclick="doSignIn()" style="flex:1">Sign in</button>
+      <button class="btn btn-ghost" onclick="doSignUp()">Sign up</button>
+    </div>
+  </div>
+</div>
+
+<!-- hidden file input -->
+<input type="file" id="ssInput" accept="image/*" style="display:none" multiple />
+
+<script src="board.js"></script>
+<script src="supabase.js"></script>
+</body>
+</html>
