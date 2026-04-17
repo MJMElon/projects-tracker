@@ -8,6 +8,15 @@
 create schema if not exists project_tracker;
 grant usage on schema project_tracker to anon, authenticated;
 
+-- Table-level grants (RLS still applies on top). Must be granted explicitly
+-- for non-public schemas; they are not inherited from the public default.
+grant select, insert, update, delete on all tables in schema project_tracker to authenticated;
+grant usage, select on all sequences in schema project_tracker to authenticated;
+alter default privileges in schema project_tracker
+  grant select, insert, update, delete on tables to authenticated;
+alter default privileges in schema project_tracker
+  grant usage, select on sequences to authenticated;
+
 -- ── projects ────────────────────────────────────────────────
 create table if not exists project_tracker.projects (
   id         uuid primary key default gen_random_uuid(),

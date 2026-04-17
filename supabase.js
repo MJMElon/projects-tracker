@@ -119,12 +119,13 @@ async function syncNow(){
     S.projects.forEach(p=>{
       const row = projectToRow(p, _user.id);
       const key = JSON.stringify(row);
-      if(_snap.projects[p.id] !== key){ projectUpserts.push(row); _snap.projects[p.id] = key; }
+      if(_snap.projects[p.id] !== key) projectUpserts.push(row);
     });
     const projDeletes = Object.keys(_snap.projects).filter(id => !projIds.has(id));
     if(projectUpserts.length){
       const { error } = await sb.from('projects').upsert(projectUpserts);
       if(error){ console.error('project upsert', error); alert('Project save failed: '+error.message); }
+      else projectUpserts.forEach(r => { _snap.projects[r.id] = JSON.stringify(r); });
     }
     if(projDeletes.length){
       const { error } = await sb.from('projects').delete().in('id', projDeletes);
@@ -139,12 +140,13 @@ async function syncNow(){
       if(!t.projectId || !isUuid(t.projectId)) return; // skip orphan/local-only
       const row = taskToRow(t, _user.id);
       const key = JSON.stringify(row);
-      if(_snap.tasks[t.id] !== key){ taskUpserts.push(row); _snap.tasks[t.id] = key; }
+      if(_snap.tasks[t.id] !== key) taskUpserts.push(row);
     });
     const taskDeletes = Object.keys(_snap.tasks).filter(id => !taskIds.has(id));
     if(taskUpserts.length){
       const { error } = await sb.from('tasks').upsert(taskUpserts);
       if(error){ console.error('task upsert', error); alert('Save failed: '+error.message); }
+      else taskUpserts.forEach(r => { _snap.tasks[r.id] = JSON.stringify(r); });
     }
     if(taskDeletes.length){
       const { error } = await sb.from('tasks').delete().in('id', taskDeletes);
@@ -206,7 +208,8 @@ async function doSignUp(){
   }
 }
 async function doSignOut(){
-  await sb.auth.signOut();
+  try { await sb.auth.signOut(); } catch(e){ console.warn('signOut error (proceeding anyway)', e); }
+  _user = null;
   S.projects = []; S.tasks = []; S.activeProject = null;
   _snap = { projects: {}, tasks: {} };
   render();
