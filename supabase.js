@@ -123,6 +123,14 @@ async function syncNow(){
     });
     const projDeletes = Object.keys(_snap.projects).filter(id => !projIds.has(id));
     if(projectUpserts.length){
+      // Refresh auth — ensure the JWT we're about to send is current
+      const { data: liveUser } = await sb.auth.getUser();
+      console.log('[project upsert] _user.id:', _user.id, '| liveUser.id:', liveUser?.user?.id, '| row.owner_id:', projectUpserts[0].owner_id);
+      if(liveUser?.user?.id && liveUser.user.id !== _user.id){
+        console.warn('[project upsert] _user stale, refreshing');
+        _user = liveUser.user;
+        projectUpserts.forEach(r => r.owner_id = _user.id);
+      }
       const { error } = await sb.from('projects').upsert(projectUpserts);
       if(error){ console.error('project upsert', error); alert('Project save failed: '+error.message); }
       else projectUpserts.forEach(r => { _snap.projects[r.id] = JSON.stringify(r); });
