@@ -319,11 +319,7 @@ function applyProjectChange(p){
 // ═══════════════════════════════════════════════
 async function boot(){
   try {
-    // Timeout getSession so a corrupted/hanging auth state can't lock the UI.
-    const session = await Promise.race([
-      sb.auth.getSession().then(r => r.data.session || null),
-      new Promise(res => setTimeout(() => { console.warn('getSession timed out — forcing sign-in'); res(null); }, 4000))
-    ]);
+    const { data: { session } } = await sb.auth.getSession();
     _user = session?.user || null;
     renderAuthBar();
     if(!_user){ showAuth(); return; }
