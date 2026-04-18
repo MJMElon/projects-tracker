@@ -6,7 +6,9 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   db: { schema: 'project_tracker' },
-  auth: { persistSession: true, autoRefreshToken: true }
+  // autoRefreshToken disabled — supabase-js can hang on the refresh call in
+  // some environments; we refresh manually below with a timeout.
+  auth: { persistSession: true, autoRefreshToken: false }
 });
 
 let _user = null;
@@ -317,12 +319,60 @@ function applyProjectChange(p){
 // ═══════════════════════════════════════════════
 // BOOT
 // ═══════════════════════════════════════════════
+// Read session directly from localStorage — bypasses any locks in supabase-js
+function readStoredSession(){
+  try {
+    const raw = localStorage.getItem('sb-kibqjztozokohqmhqqqf-auth-token');
+    if(!raw) return null;
+    const parsed = JSON.parse(raw);
+    // Storage format varies across supabase-js versions; try both shapes.
+    return parsed?.currentSession || parsed || null;
+  } catch(e){ return null; }
+}
+
+// Refresh the access token via direct fetch (racing against a short timeout)
+async function refreshTokenSafe(refreshToken){
+  try {
+    const res = await Promise.race([
+      fetch(SUPABASE_URL + '/auth/v1/token?grant_type=refresh_token', {
+        method: 'POST',
+        headers: { 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: refreshToken })
+      }).then(r => r.json()),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('refresh timeout')), 5000))
+    ]);
+    if(res && res.access_token) return res;
+    return null;
+  } catch(e){ console.warn('[refresh] failed', e); return null; }
+}
+
 async function boot(){
   console.log('[boot] start');
   try {
-    const { data: { session }, error: sessionErr } = await sb.auth.getSession();
-    console.log('[boot] getSession:', { hasSession: !!session, userId: session?.user?.id, expiresAt: session?.expires_at, sessionErr });
-    _user = session?.user || null;
+    // 1) Read stored session instantly (no network call, no locks).
+    let stored = readStoredSession();
+    console.log('[boot] stored session:', !!stored, 'expires_at:', stored?.expires_at);
+
+    // 2) If expired or near expiry, refresh manually with a timeout.
+    const now = Math.floor(Date.now() / 1000);
+    if(stored && stored.expires_at && stored.expires_at <= now + 60 && stored.refresh_token){
+      console.log('[boot] token expired, refreshing...');
+      const refreshed = await refreshTokenSafe(stored.refresh_token);
+      if(refreshed){
+        console.log('[boot] refresh OK');
+        stored = refreshed;
+        // Hand the new tokens back to supabase-js so subsequent calls use them.
+        await sb.auth.setSession({ access_token: refreshed.access_token, refresh_token: refreshed.refresh_token });
+      } else {
+        console.warn('[boot] refresh failed → forcing sign-in');
+        stored = null;
+      }
+    } else if(stored) {
+      // Session still valid — make sure supabase-js knows about it.
+      await sb.auth.setSession({ access_token: stored.access_token, refresh_token: stored.refresh_token });
+    }
+
+    _user = stored?.user || null;
     renderAuthBar();
     if(!_user){ console.log('[boot] no user → showAuth'); showAuth(); return; }
     hideAuth();
