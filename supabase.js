@@ -318,17 +318,22 @@ function applyProjectChange(p){
 // BOOT
 // ═══════════════════════════════════════════════
 async function boot(){
+  console.log('[boot] start');
   try {
-    const { data: { session } } = await sb.auth.getSession();
+    const { data: { session }, error: sessionErr } = await sb.auth.getSession();
+    console.log('[boot] getSession:', { hasSession: !!session, userId: session?.user?.id, expiresAt: session?.expires_at, sessionErr });
     _user = session?.user || null;
     renderAuthBar();
-    if(!_user){ showAuth(); return; }
+    if(!_user){ console.log('[boot] no user → showAuth'); showAuth(); return; }
     hideAuth();
+    console.log('[boot] hydrating...');
     await hydrate();
+    console.log('[boot] hydrate done. projects:', S.projects.length, 'tasks:', S.tasks.length);
     render();
     subscribeRealtime();
+    console.log('[boot] done');
   } catch(e){
-    console.error('boot failed', e);
+    console.error('[boot] failed', e);
     alert('Failed to start: '+(e.message||e));
     showAuth();
   }
