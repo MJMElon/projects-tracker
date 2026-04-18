@@ -174,14 +174,14 @@ function renderBoard(){
       return 0;
     });
     const cardsHtml=items.map(it=>it.type==='task'?renderCard(it.task):renderSubCard(it.task,it.sub,it.idx)).join('');
-    return `<div class="col" data-ph="${esc(ph)}" draggable="true" ondragstart="colDragStart(event,'${esc(ph)}')" ondragend="colDragEnd(event)" ondragover="colDragOver(event)" ondrop="colDrop(event,'${esc(ph)}')">
+    return `<div class="col" data-ph="${esc(ph)}" draggable="true" ondragstart="colDragStart(event,'${esc(ph)}')" ondragend="colDragEnd(event)" ondragover="colDragOver(event)" ondragleave="colDragLeave(event)" ondrop="colDrop(event,'${esc(ph)}')">
       <div class="col-head">
         <div class="col-dot ${cc}"></div>
         <div class="col-title">${esc(ph)}</div>
         <div class="col-count">${doneN}/${tasks.length}</div>
         <button class="col-menu-btn" onclick="openColCtx(event,'${esc(ph)}')">⋯</button>
       </div>
-      <div class="col-body" id="col-${esc(ph)}" ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="drop(event,'${esc(ph)}')">
+      <div class="col-body" id="col-${esc(ph)}">
         ${cardsHtml}
       </div>
       <button class="col-add-btn" onclick="openAddTask('${esc(ph)}')">+ Add Task</button>
@@ -860,53 +860,72 @@ async function uploadScreenshot(projectId, file){
 }
 
 // Resolve a screenshot value to a URL usable in <img src>.
-// Accepts legacy base64 data URLs OR storage paths.
+// Accepts legacy base64 data URLs, in-flight blob: URLs, or storage paths.
 function shotUrl(s){
   if(!s) return '';
-  if(s.startsWith('data:') || s.startsWith('http://') || s.startsWith('https://')) return s;
+  if(s.startsWith('data:') || s.startsWith('http://') || s.startsWith('https://') || s.startsWith('blob:')) return s;
   return sb.storage.from(SS_BUCKET).getPublicUrl(s).data.publicUrl;
 }
 
 document.getElementById('ssInput').addEventListener('change', async function(){
   const files = Array.from(this.files);
   this.value = '';
+  if(!files.length) return;
+
+  // Resolve the target (task or subtask) and the project id for storage path.
+  let target = null, projectId = null, isSubUpload = false, subInfo = null;
   if(_uploadForSubtask){
-    const { taskId, idx } = _uploadForSubtask;
-    const t = S.tasks.find(t => t.id === taskId); if(!t || !t.subtasks) return;
-    const s = t.subtasks[idx]; if(!s) return;
-    if(!s.screenshots) s.screenshots = [];
-    for(const f of files){
-      const path = await uploadScreenshot(t.projectId, f);
-      if(path) s.screenshots.push(path);
-    }
-    save(); renderDrawer(); render();
-    _uploadForSubtask = null;
+    subInfo = _uploadForSubtask; _uploadForSubtask = null; isSubUpload = true;
+    const t = S.tasks.find(x => x.id === subInfo.taskId); if(!t || !t.subtasks) return;
+    target = t.subtasks[subInfo.idx]; if(!target) return;
+    projectId = t.projectId;
   } else if(_uploadForTaskId){
-    const t = S.tasks.find(t => t.id === _uploadForTaskId); if(!t) return;
-    if(!t.screenshots) t.screenshots = [];
-    for(const f of files){
-      const path = await uploadScreenshot(t.projectId, f);
-      if(path) t.screenshots.push(path);
+    const id = _uploadForTaskId; _uploadForTaskId = null;
+    target = S.tasks.find(x => x.id === id); if(!target) return;
+    projectId = target.projectId;
+  } else { return; }
+  if(!target.screenshots) target.screenshots = [];
+
+  // Phase 1: show a local preview immediately so the UI feels instant.
+  const pending = files.map(f => ({ blobUrl: URL.createObjectURL(f), file: f }));
+  pending.forEach(p => target.screenshots.push(p.blobUrl));
+  if(_drawerId) renderDrawer();
+  render();
+
+  // Phase 2: compress + upload in the background; swap blob URL for storage path.
+  for(const p of pending){
+    const path = await uploadScreenshot(projectId, p.file);
+    const idx = target.screenshots.indexOf(p.blobUrl);
+    if(idx >= 0){
+      if(path) target.screenshots[idx] = path;
+      else target.screenshots.splice(idx, 1); // upload failed
     }
-    save(); if(_drawerId === _uploadForTaskId){ renderDrawer(); render(); } else render();
-    _uploadForTaskId = null;
+    URL.revokeObjectURL(p.blobUrl);
   }
+  save();
+  if(_drawerId) renderDrawer();
+  render();
 });
 
-// Best-effort remove the file from storage. Skips legacy base64 entries.
+// True if the given string is an actual Supabase storage path (not base64/http/blob).
+function isStoragePath(s){
+  return typeof s === 'string' && s && !s.startsWith('data:') && !s.startsWith('http') && !s.startsWith('blob:');
+}
+
+// Best-effort remove the file from storage. Skips legacy/in-flight entries.
 async function removeFromStorage(pathOrData){
-  if(!pathOrData || pathOrData.startsWith('data:') || pathOrData.startsWith('http')) return;
+  if(!isStoragePath(pathOrData)) return;
   try { await sb.storage.from(SS_BUCKET).remove([pathOrData]); }
   catch(e){ console.warn('storage remove failed', e); }
 }
 
-// Collect storage paths (ignore legacy base64) from a task incl. its subtasks.
+// Collect storage paths (ignore legacy base64 / in-flight blob) from a task
+// including all of its subtasks.
 function collectTaskPaths(task){
   const out = [];
-  const keep = s => s && typeof s === 'string' && !s.startsWith('data:') && !s.startsWith('http');
-  (task?.screenshots || []).forEach(s => { if(keep(s)) out.push(s); });
+  (task?.screenshots || []).forEach(s => { if(isStoragePath(s)) out.push(s); });
   (task?.subtasks || []).forEach(sub => {
-    (sub?.screenshots || []).forEach(s => { if(keep(s)) out.push(s); });
+    (sub?.screenshots || []).forEach(s => { if(isStoragePath(s)) out.push(s); });
   });
   return out;
 }
@@ -1138,7 +1157,7 @@ function dragStart(e,id){
 }
 function dragEnd(){
   document.querySelectorAll('.tcard.dragging').forEach(el=>el.classList.remove('dragging'));
-  document.querySelectorAll('.col-body.drag-over').forEach(el=>el.classList.remove('drag-over'));
+  document.querySelectorAll('.col.col-task-over').forEach(el=>el.classList.remove('col-task-over'));
   _dragTaskId=null;
 }
 
@@ -1153,18 +1172,10 @@ function dragStartSub(e,taskId,idx){
 }
 function dragEndSub(){
   document.querySelectorAll('.tcard.dragging').forEach(el=>el.classList.remove('dragging'));
-  document.querySelectorAll('.col-body.drag-over').forEach(el=>el.classList.remove('drag-over'));
+  document.querySelectorAll('.col.col-task-over').forEach(el=>el.classList.remove('col-task-over'));
   _dragSubInfo=null;
 }
 
-function dragOver(e){
-  e.preventDefault();
-  e.dataTransfer.dropEffect='move';
-  e.currentTarget.classList.add('drag-over');
-}
-function dragLeave(e){
-  if(!e.currentTarget.contains(e.relatedTarget)) e.currentTarget.classList.remove('drag-over');
-}
 function getDropIndex(colBody,y){
   const cards=[...colBody.querySelectorAll('.tcard:not(.dragging)')];
   for(let i=0;i<cards.length;i++){
@@ -1201,30 +1212,7 @@ function reorderPhaseItems(ph,dragType,dragRef,dropIdx){
     else it.ref.phaseOrder=i;
   });
 }
-function drop(e,ph){
-  e.preventDefault();
-  e.currentTarget.classList.remove('drag-over');
-  if(_dragTaskId){
-    const t=S.tasks.find(t=>t.id===_dragTaskId);
-    if(!t){ _dragTaskId=null; return; }
-    const dropIdx=getDropIndex(e.currentTarget,e.clientY);
-    t.phase=ph;
-    reorderPhaseItems(ph,'task',t.id,dropIdx);
-    save(); render(); if(_drawerId===_dragTaskId) renderDrawer();
-    _dragTaskId=null;
-  } else if(_dragSubInfo){
-    const t=S.tasks.find(t=>t.id===_dragSubInfo.taskId);
-    if(t&&t.subtasks){
-      const s=t.subtasks[_dragSubInfo.idx];
-      if(!s){ _dragSubInfo=null; return; }
-      const dropIdx=getDropIndex(e.currentTarget,e.clientY);
-      s.phase=ph;
-      reorderPhaseItems(ph,'sub',t.id+':'+_dragSubInfo.idx,dropIdx);
-      save(); render();
-    }
-    _dragSubInfo=null;
-  }
-}
+// (Task/subtask drops are now handled by colDrop on the whole column.)
 
 // ═══════════════════════════════════════════════
 // COLUMN (PHASE) DRAG
@@ -1246,28 +1234,72 @@ function colDragEnd(e){
   document.querySelectorAll('.col.col-drag-over').forEach(el=>el.classList.remove('col-drag-over'));
   _dragColPh=null;
 }
+// Unified dragover for columns — accepts task/sub drops (anywhere in column)
+// AND handles column reorder. No visual feedback for task drops per UX request.
 function colDragOver(e){
-  if(!_dragColPh) return;
-  e.preventDefault();
-  e.stopPropagation();
-  e.dataTransfer.dropEffect='move';
-  const col=e.currentTarget.closest?e.currentTarget:e.target.closest('.col');
-  if(col) col.classList.add('col-drag-over');
+  if(_dragTaskId || _dragSubInfo){
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    e.currentTarget.classList.add('col-task-over');
+    return;
+  }
+  if(_dragColPh){
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
+    const col = e.currentTarget;
+    if(col) col.classList.add('col-drag-over');
+  }
 }
-function colDrop(e,targetPh){
+function colDragLeave(e){
+  const col = e.currentTarget;
+  if(!col || col.contains(e.relatedTarget)) return;
+  col.classList.remove('col-drag-over');
+  col.classList.remove('col-task-over');
+}
+function colDrop(e, targetPh){
+  e.currentTarget.classList.remove('col-task-over');
+  // Task/subtask drop — anywhere in the column
+  if(_dragTaskId || _dragSubInfo){
+    e.preventDefault();
+    const colBody = e.currentTarget.querySelector('.col-body');
+    const dropIdx = colBody ? getDropIndex(colBody, e.clientY) : 0;
+    if(_dragTaskId){
+      const t = S.tasks.find(t => t.id === _dragTaskId);
+      if(t){
+        t.phase = targetPh;
+        reorderPhaseItems(targetPh, 'task', t.id, dropIdx);
+        save(); render(); if(_drawerId === _dragTaskId) renderDrawer();
+      }
+      _dragTaskId = null;
+    } else {
+      const t = S.tasks.find(t => t.id === _dragSubInfo.taskId);
+      if(t && t.subtasks){
+        const s = t.subtasks[_dragSubInfo.idx];
+        if(s){
+          s.phase = targetPh;
+          reorderPhaseItems(targetPh, 'sub', t.id + ':' + _dragSubInfo.idx, dropIdx);
+          save(); render();
+        }
+      }
+      _dragSubInfo = null;
+    }
+    return;
+  }
+  // Column reorder
   e.preventDefault();
   e.stopPropagation();
-  const col=e.currentTarget.closest?e.currentTarget:e.target.closest('.col');
+  const col = e.currentTarget;
   if(col) col.classList.remove('col-drag-over');
-  if(!_dragColPh||_dragColPh===targetPh) return;
-  const proj=getProject(); if(!proj) return;
-  const fromIdx=proj.phases.indexOf(_dragColPh);
-  const toIdx=proj.phases.indexOf(targetPh);
-  if(fromIdx<0||toIdx<0) return;
-  proj.phases.splice(fromIdx,1);
-  proj.phases.splice(toIdx,0,_dragColPh);
+  if(!_dragColPh || _dragColPh === targetPh) return;
+  const proj = getProject(); if(!proj) return;
+  const fromIdx = proj.phases.indexOf(_dragColPh);
+  const toIdx = proj.phases.indexOf(targetPh);
+  if(fromIdx < 0 || toIdx < 0) return;
+  proj.phases.splice(fromIdx, 1);
+  proj.phases.splice(toIdx, 0, _dragColPh);
   save(); render();
-  _dragColPh=null;
+  _dragColPh = null;
 }
 
 // ═══════════════════════════════════════════════

@@ -603,15 +603,16 @@ async function boot(){
     renderAuthBar();
     if(!_user){ console.log('[boot] no user → showAuth'); showAuth(); return; }
     hideAuth();
+    // Set the dedup flag BEFORE awaiting hydrate so that onAuthStateChange's
+    // SIGNED_IN event (which fires concurrently) doesn't trigger a second
+    // hydrate on top of ours.
+    _lastHydratedUid = _user?.id;
     console.log('[boot] hydrating...');
     await hydrate();
     console.log('[boot] hydrate done. projects:', S.projects.length, 'tasks:', S.tasks.length);
     render();
-    // Preload members for the active project so the assignee dropdown
-    // in new-task / edit-task modals is populated without extra wait.
     if(S.activeProject) fetchMembers(S.activeProject);
     subscribeRealtime();
-    _lastHydratedUid = _user?.id;
     // First-time users (pre-existing accounts from nurseryAI) may not have a
     // display name — prompt once so they show up nicely in member lists.
     if(!hasDisplayName() && !sessionStorage.getItem('pt_name_prompted')){

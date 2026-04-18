@@ -122,7 +122,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:14p
 .tcard:hover{border-top-color:var(--border2);border-right-color:var(--border2);border-bottom-color:var(--border2);box-shadow:var(--sh);transform:translateY(-1px);}
 .tcard[draggable]{cursor:grab;}
 .tcard.dragging{opacity:.4;transform:scale(.97);cursor:grabbing;}
-.col-body.drag-over{background:var(--accent-dim);border-radius:8px;outline:2px dashed var(--accent);outline-offset:-4px;}
+.col.col-task-over{background:rgba(74,222,128,0.08);transition:background .12s;}
 .tc-row1{display:flex;align-items:flex-start;gap:6px;}
 .tc-row2,.tc-row3{display:flex;flex-wrap:wrap;gap:5px;align-items:center;}
 .tc-row3{opacity:.8;}
