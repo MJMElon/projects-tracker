@@ -353,7 +353,8 @@ async function boot(){
     let stored = readStoredSession();
     console.log('[boot] stored session:', !!stored, 'expires_at:', stored?.expires_at);
 
-    // 2) If expired or near expiry, refresh manually with a timeout.
+    // 2) If expired or near expiry, refresh manually; overwrite localStorage so
+    //    supabase-js picks up the new token on its next API call.
     const now = Math.floor(Date.now() / 1000);
     if(stored && stored.expires_at && stored.expires_at <= now + 60 && stored.refresh_token){
       console.log('[boot] token expired, refreshing...');
@@ -361,15 +362,16 @@ async function boot(){
       if(refreshed){
         console.log('[boot] refresh OK');
         stored = refreshed;
-        // Hand the new tokens back to supabase-js so subsequent calls use them.
-        await sb.auth.setSession({ access_token: refreshed.access_token, refresh_token: refreshed.refresh_token });
+        try {
+          localStorage.setItem(
+            'sb-kibqjztozokohqmhqqqf-auth-token',
+            JSON.stringify({ ...refreshed, currentSession: refreshed, expires_at: refreshed.expires_at })
+          );
+        } catch(e){ console.warn('[boot] could not persist refreshed token', e); }
       } else {
         console.warn('[boot] refresh failed → forcing sign-in');
         stored = null;
       }
-    } else if(stored) {
-      // Session still valid — make sure supabase-js knows about it.
-      await sb.auth.setSession({ access_token: stored.access_token, refresh_token: stored.refresh_token });
     }
 
     _user = stored?.user || null;
