@@ -399,6 +399,7 @@ async function boot(){
     console.log('[boot] hydrate done. projects:', S.projects.length, 'tasks:', S.tasks.length);
     render();
     subscribeRealtime();
+    _booted = true;
     console.log('[boot] done');
   } catch(e){
     console.error('[boot] failed', e);
@@ -413,15 +414,19 @@ function hardReset(){
   location.reload();
 }
 
+let _booted = false;
 sb.auth.onAuthStateChange(async (event, session) => {
   _user = session?.user || null;
   renderAuthBar();
   if(event === 'SIGNED_IN'){
+    // Skip if boot() is already handling (or just handled) initial hydration.
+    if(!_booted){ _booted = true; return; }
     hideAuth();
     await hydrate();
     render();
     subscribeRealtime();
   } else if(event === 'SIGNED_OUT'){
+    _booted = false;
     showAuth();
   }
 });
