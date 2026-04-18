@@ -81,16 +81,18 @@ function isUuid(s){ return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-
 // HYDRATE (load from server into S)
 // ═══════════════════════════════════════════════
 async function hydrate(){
-  const { data: projects, error: pe } = await sb.from('projects').select('*').order('created_at',{ascending:true});
+  // Use RPCs instead of direct table SELECTs — GETs on custom schemas were
+  // hanging for this client; RPCs are POSTs and go through reliably.
+  const { data: projects, error: pe } = await sb.rpc('get_my_projects');
   if(pe){
     console.error('load projects', pe);
-    const hint = /schema|not found|relation/i.test(pe.message||'')
-      ? '\n\nFix: Supabase Dashboard → Settings → API → Exposed schemas — add "project_tracker", then reload.'
+    const hint = /schema|not found|relation|function/i.test(pe.message||'')
+      ? '\n\nFix: make sure project_tracker is in Settings → API → Exposed schemas, and the get_my_projects() function was created.'
       : '';
     alert('Failed to load projects: '+pe.message+hint);
     return;
   }
-  const { data: tasks, error: te } = await sb.from('tasks').select('*');
+  const { data: tasks, error: te } = await sb.rpc('get_my_tasks');
   if(te){ console.error('load tasks', te); alert('Failed to load tasks: '+te.message); return; }
 
   S.projects = (projects||[]).map(rowToProject);

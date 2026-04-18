@@ -121,7 +121,9 @@ create policy projects_delete on project_tracker.projects
 drop policy if exists pm_select on project_tracker.project_members;
 create policy pm_select on project_tracker.project_members
   for select to authenticated
-  using (user_id = auth.uid() or project_tracker.is_member(project_id));
+  -- keep this policy simple (no is_member call) to avoid recursion:
+  -- projects_select → is_member() → project_members SELECT → pm_select → is_member() → ...
+  using (user_id = auth.uid());
 
 drop policy if exists pm_insert on project_tracker.project_members;
 create policy pm_insert on project_tracker.project_members
@@ -187,6 +189,30 @@ begin
   return json_build_object('ok', true, 'user_id', uid);
 end; $$;
 grant execute on function project_tracker.invite_member(uuid, text) to authenticated;
+
+-- ── RPC data fetchers ──────────────────────────────────────
+-- GET requests to custom-schema tables were hanging for some clients;
+-- these RPCs (POSTs) are used for initial hydration instead of direct
+-- table SELECTs. They bypass table RLS (security definer) and filter
+-- by membership themselves.
+create or replace function project_tracker.get_my_projects()
+returns setof project_tracker.projects
+language sql security definer stable set search_path = project_tracker, public as $$
+  select p.* from project_tracker.projects p
+  join project_tracker.project_members m on m.project_id = p.id
+  where m.user_id = auth.uid()
+  order by p.created_at;
+$$;
+grant execute on function project_tracker.get_my_projects() to authenticated;
+
+create or replace function project_tracker.get_my_tasks()
+returns setof project_tracker.tasks
+language sql security definer stable set search_path = project_tracker, public as $$
+  select t.* from project_tracker.tasks t
+  join project_tracker.project_members m on m.project_id = t.project_id
+  where m.user_id = auth.uid();
+$$;
+grant execute on function project_tracker.get_my_tasks() to authenticated;
 
 -- ── debug: what does Postgres see when a request comes in? ──
 create or replace function project_tracker.whoami() returns json
