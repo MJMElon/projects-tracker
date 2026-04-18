@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Vibe Tracker · MJM</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="board.css?v=16">
+<link rel="stylesheet" href="board.css?v=18">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -19,7 +19,7 @@
   <div class="logo">Vibe<span>Tracker</span></div>
   <div class="hactions">
     <div class="auth-bar" id="authBar"></div>
-    <button class="btn btn-ghost btn-sm" id="inviteBtn" onclick="openInviteModal()" title="Invite a member to this project">👥 Invite</button>
+    <button class="btn btn-ghost btn-sm" id="inviteBtn" onclick="openMembersModal()" title="Manage project members">👥 Members</button>
     <button class="btn btn-ghost btn-sm" id="reportBtn">📊 Report</button>
     <button class="btn btn-primary btn-sm" onclick="openAddTask(null)">+ Task</button>
     <button class="btn btn-ghost btn-sm" onclick="hardReset()" title="Force logout & clear local session">⟲</button>
@@ -71,7 +71,7 @@
       <div class="field"><label>Due Date</label><input type="date" id="fDue" /></div>
     </div>
     <div class="frow">
-      <div class="field"><label>Assign To</label><input type="text" id="fAssignee" placeholder="@name" /></div>
+      <div class="field"><label>Assign To</label><select id="fAssignee"><option value="">— Unassigned —</option></select></div>
     </div>
     <div class="mactions">
       <button class="btn btn-ghost" onclick="closeTaskModal()">Cancel</button>
@@ -146,19 +146,34 @@
   </div>
 </div>
 
-<!-- INVITE MEMBER MODAL -->
-<div class="modal-overlay" id="inviteModal">
+<!-- MEMBERS MODAL (list + invite + role + remove + self-leave) -->
+<div class="modal-overlay" id="membersModal">
+  <div class="modal" style="max-width:520px">
+    <span class="mhandle"></span>
+    <div class="mtitle">👥 Members · <span id="membersProjName" style="color:var(--accent)"></span></div>
+    <div class="mem-list" id="membersList"></div>
+    <div class="mem-invite" id="memInviteRow">
+      <input type="email" id="inviteEmail" placeholder="Invite by email…" />
+      <button class="btn btn-primary btn-sm" onclick="submitInvite()">Invite</button>
+    </div>
+    <div id="inviteMsg" style="font-size:13px;min-height:18px;margin-top:6px"></div>
+    <div class="mactions">
+      <button class="btn btn-ghost" onclick="closeMembersModal()">Close</button>
+      <button class="btn btn-danger btn-sm" id="leaveBtn" onclick="doSelfLeave()" style="display:none">Leave project</button>
+    </div>
+  </div>
+</div>
+
+<!-- PROFILE MODAL -->
+<div class="modal-overlay" id="profileModal">
   <div class="modal">
     <span class="mhandle"></span>
-    <div class="mtitle">👥 Invite Member</div>
-    <div style="color:var(--text2);font-size:13px;margin-bottom:12px">
-      Add someone to <strong id="inviteProjName" style="color:var(--text)"></strong>. They must have an account already.
-    </div>
-    <div class="field"><label>Email</label><input type="email" id="inviteEmail" placeholder="name@example.com" /></div>
-    <div id="inviteMsg" style="font-size:13px;min-height:18px;margin:4px 0 8px"></div>
+    <div class="mtitle">👤 Profile</div>
+    <div class="field"><label>Display name</label><input type="text" id="profileName" placeholder="Your name" /></div>
+    <div id="profileMsg" style="font-size:13px;min-height:18px;margin:4px 0 8px"></div>
     <div class="mactions">
-      <button class="btn btn-ghost" onclick="closeInviteModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="submitInvite()">Invite</button>
+      <button class="btn btn-ghost" onclick="closeProfileModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveProfile()">Save</button>
     </div>
   </div>
 </div>
@@ -175,12 +190,13 @@
   <div class="auth-card" id="authCardForm" style="display:none">
     <div class="auth-logo">Vibe<span>Tracker</span></div>
     <div class="auth-sub">Sign in to continue</div>
+    <div class="field" id="authNameField" style="display:none"><label>Display name</label><input type="text" id="authName" placeholder="Your name" /></div>
     <div class="field"><label>Email</label><input type="email" id="authEmail" autocomplete="email" placeholder="you@example.com" /></div>
     <div class="field"><label>Password</label><input type="password" id="authPassword" autocomplete="current-password" placeholder="••••••••" /></div>
     <div id="authMsg" style="font-size:13px;min-height:18px;margin:4px 0 10px"></div>
     <div class="auth-actions">
-      <button class="btn btn-primary" onclick="doSignIn()" style="flex:1">Sign in</button>
-      <button class="btn btn-ghost" onclick="doSignUp()">Sign up</button>
+      <button class="btn btn-primary" id="authPrimaryBtn" onclick="doSignIn()" style="flex:1">Sign in</button>
+      <button class="btn btn-ghost" id="authToggleBtn" onclick="toggleAuthMode()">Sign up</button>
     </div>
   </div>
 </div>
@@ -188,7 +204,7 @@
 <!-- hidden file input -->
 <input type="file" id="ssInput" accept="image/*" style="display:none" multiple />
 
-<script src="board.js?v=16"></script>
-<script src="supabase.js?v=16"></script>
+<script src="board.js?v=18"></script>
+<script src="supabase.js?v=18"></script>
 </body>
 </html>

@@ -31,11 +31,24 @@ create index if not exists projects_owner_idx on project_tracker.projects(owner_
 create table if not exists project_tracker.project_members (
   project_id uuid not null references project_tracker.projects(id) on delete cascade,
   user_id    uuid not null references auth.users(id) on delete cascade,
-  role       text not null default 'editor' check (role in ('owner','editor')),
+  role       text not null default 'member' check (role in ('owner','admin','member')),
   joined_at  timestamptz not null default now(),
   primary key (project_id, user_id)
 );
 create index if not exists pm_user_idx on project_tracker.project_members(user_id);
+
+-- Migrate any existing 'editor' rows to 'member' (safe to re-run)
+do $$ begin
+  if exists (
+    select 1 from project_tracker.project_members where role = 'editor'
+  ) then
+    update project_tracker.project_members set role = 'member' where role = 'editor';
+  end if;
+end $$;
+-- Update constraint to allow the new three-tier roles (idempotent)
+alter table project_tracker.project_members drop constraint if exists project_members_role_check;
+alter table project_tracker.project_members add constraint project_members_role_check
+  check (role in ('owner','admin','member'));
 
 -- ── tasks ────────────────────────────────────────────────────
 create table if not exists project_tracker.tasks (
@@ -170,25 +183,126 @@ drop trigger if exists projects_add_owner on project_tracker.projects;
 create trigger projects_add_owner after insert on project_tracker.projects
 for each row execute function project_tracker.add_owner_as_member();
 
--- ── invite by email RPC ─────────────────────────────────────
--- Owner-only. Looks up user in auth.users by email and adds as member.
+-- ── membership helpers ──────────────────────────────────────
+create or replace function project_tracker.is_admin_or_owner(pid uuid) returns boolean
+language sql security definer set search_path = project_tracker, public as $$
+  select exists (
+    select 1 from project_tracker.project_members
+    where project_id = pid and user_id = auth.uid() and role in ('owner','admin')
+  );
+$$;
+grant execute on function project_tracker.is_admin_or_owner(uuid) to authenticated;
+
+-- ── invite by email RPC (owner OR admin) ────────────────────
 create or replace function project_tracker.invite_member(pid uuid, email_in text)
 returns json language plpgsql security definer set search_path = project_tracker, public as $$
 declare
   uid uuid;
 begin
-  if not project_tracker.is_owner(pid) then
-    raise exception 'only the project owner can invite members';
+  if not project_tracker.is_admin_or_owner(pid) then
+    raise exception 'only owners or admins can invite members';
   end if;
   select id into uid from auth.users where lower(email) = lower(email_in) limit 1;
   if uid is null then
     return json_build_object('ok', false, 'error', 'no user with that email — ask them to sign up first');
   end if;
   insert into project_tracker.project_members (project_id, user_id, role)
-  values (pid, uid, 'editor') on conflict do nothing;
+  values (pid, uid, 'member') on conflict do nothing;
   return json_build_object('ok', true, 'user_id', uid);
 end; $$;
 grant execute on function project_tracker.invite_member(uuid, text) to authenticated;
+
+-- ── list members with display name ──────────────────────────
+create or replace function project_tracker.get_project_members(pid uuid)
+returns table (user_id uuid, email text, display_name text, role text)
+language sql security definer stable set search_path = project_tracker, public, auth as $$
+  select
+    pm.user_id,
+    u.email::text,
+    coalesce(
+      nullif(u.raw_user_meta_data->>'full_name', ''),
+      nullif(u.raw_user_meta_data->>'name', ''),
+      u.email
+    )::text as display_name,
+    pm.role
+  from project_tracker.project_members pm
+  join auth.users u on u.id = pm.user_id
+  where pm.project_id = pid
+    and exists (
+      select 1 from project_tracker.project_members me
+      where me.project_id = pid and me.user_id = auth.uid()
+    )
+  order by case pm.role when 'owner' then 0 when 'admin' then 1 else 2 end, pm.joined_at;
+$$;
+grant execute on function project_tracker.get_project_members(uuid) to authenticated;
+
+-- ── change a member's role ──────────────────────────────────
+-- Owner can set any non-owner to admin or member.
+-- Admin can set any non-owner (including other admins) to admin or member.
+-- Nobody can modify the owner or transfer ownership via this RPC.
+create or replace function project_tracker.set_member_role(pid uuid, uid uuid, new_role text)
+returns json language plpgsql security definer set search_path = project_tracker, public as $$
+declare
+  my_role text;
+  target_role text;
+begin
+  if new_role not in ('admin','member') then
+    raise exception 'role must be admin or member';
+  end if;
+  select role into my_role from project_tracker.project_members
+    where project_id = pid and user_id = auth.uid();
+  if my_role is null then
+    raise exception 'you are not a member of this project';
+  end if;
+  if my_role not in ('owner','admin') then
+    raise exception 'only owners or admins can change roles';
+  end if;
+  select role into target_role from project_tracker.project_members
+    where project_id = pid and user_id = uid;
+  if target_role is null then
+    raise exception 'target is not a member';
+  end if;
+  if target_role = 'owner' then
+    raise exception 'cannot change the owner''s role';
+  end if;
+  update project_tracker.project_members set role = new_role
+    where project_id = pid and user_id = uid;
+  return json_build_object('ok', true);
+end; $$;
+grant execute on function project_tracker.set_member_role(uuid, uuid, text) to authenticated;
+
+-- ── remove a member (also used for self-leave) ──────────────
+-- Owner can remove any non-owner.
+-- Admin can remove any non-owner (including other admins).
+-- Any member can remove themselves (self-leave), except the owner.
+create or replace function project_tracker.remove_member(pid uuid, uid uuid)
+returns json language plpgsql security definer set search_path = project_tracker, public as $$
+declare
+  my_role text;
+  target_role text;
+begin
+  select role into my_role from project_tracker.project_members
+    where project_id = pid and user_id = auth.uid();
+  select role into target_role from project_tracker.project_members
+    where project_id = pid and user_id = uid;
+  if target_role is null then
+    return json_build_object('ok', true);
+  end if;
+  if target_role = 'owner' then
+    raise exception 'cannot remove the project owner';
+  end if;
+  if uid = auth.uid() then
+    -- self-leave, allowed for non-owner
+    null;
+  elsif my_role in ('owner','admin') then
+    null;
+  else
+    raise exception 'only owners or admins can remove other members';
+  end if;
+  delete from project_tracker.project_members where project_id = pid and user_id = uid;
+  return json_build_object('ok', true);
+end; $$;
+grant execute on function project_tracker.remove_member(uuid, uuid) to authenticated;
 
 -- ── RPC data fetchers ──────────────────────────────────────
 -- GET requests to custom-schema tables were hanging for some clients;

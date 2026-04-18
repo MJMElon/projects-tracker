@@ -220,6 +220,16 @@ function setAuthMsg(msg, isError){
   el.style.color = isError ? 'var(--red)' : 'var(--accent)';
 }
 
+let _authMode = 'signin'; // 'signin' | 'signup'
+function toggleAuthMode(){
+  _authMode = _authMode === 'signin' ? 'signup' : 'signin';
+  document.getElementById('authNameField').style.display = _authMode === 'signup' ? '' : 'none';
+  document.getElementById('authPrimaryBtn').textContent = _authMode === 'signup' ? 'Create account' : 'Sign in';
+  document.getElementById('authPrimaryBtn').onclick = _authMode === 'signup' ? doSignUp : doSignIn;
+  document.getElementById('authToggleBtn').textContent = _authMode === 'signup' ? 'Have an account? Sign in' : 'Sign up';
+  setAuthMsg('', false);
+}
+
 async function doSignIn(){
   const email = document.getElementById('authEmail').value.trim();
   const password = document.getElementById('authPassword').value;
@@ -232,10 +242,12 @@ async function doSignIn(){
 async function doSignUp(){
   const email = document.getElementById('authEmail').value.trim();
   const password = document.getElementById('authPassword').value;
+  const name = document.getElementById('authName').value.trim();
   if(!email || !password){ setAuthMsg('Email and password required', true); return; }
+  if(!name){ setAuthMsg('Display name required', true); return; }
   if(password.length < 6){ setAuthMsg('Password must be at least 6 characters', true); return; }
   setAuthMsg('Creating account…', false);
-  const { data, error } = await sb.auth.signUp({ email, password });
+  const { data, error } = await sb.auth.signUp({ email, password, options: { data: { full_name: name } } });
   if(error){ setAuthMsg(error.message, true); return; }
   if(data.user && !data.session){
     setAuthMsg('Check your email to confirm, then sign in.', false);
@@ -253,37 +265,152 @@ async function doSignOut(){
   renderAuthBar();
 }
 
+function getMyDisplayName(){
+  const m = _user?.user_metadata || {};
+  return m.full_name || m.name || _user?.email || '';
+}
 function renderAuthBar(){
   const el = document.getElementById('authBar');
   if(!el) return;
   el.innerHTML = _user
-    ? `<span class="auth-email">${_user.email}</span><button class="btn btn-ghost btn-sm" onclick="doSignOut()">Sign out</button>`
+    ? `<span class="auth-email" onclick="openProfileModal()" title="Edit profile" style="cursor:pointer">${esc(getMyDisplayName())}</span><button class="btn btn-ghost btn-sm" onclick="doSignOut()">Sign out</button>`
     : '';
 }
 
+// PROFILE
+function openProfileModal(){
+  document.getElementById('profileName').value = _user?.user_metadata?.full_name || _user?.user_metadata?.name || '';
+  document.getElementById('profileMsg').textContent = '';
+  document.getElementById('profileModal').classList.add('open');
+  setTimeout(()=>document.getElementById('profileName').focus(), 200);
+}
+function closeProfileModal(){ document.getElementById('profileModal').classList.remove('open'); }
+async function saveProfile(){
+  const name = document.getElementById('profileName').value.trim();
+  const msg = document.getElementById('profileMsg');
+  if(!name){ msg.style.color='var(--red)'; msg.textContent='Name required'; return; }
+  msg.style.color='var(--text2)'; msg.textContent='Saving…';
+  const { data, error } = await sb.auth.updateUser({ data: { full_name: name } });
+  if(error){ msg.style.color='var(--red)'; msg.textContent=error.message; return; }
+  _user = data.user;
+  renderAuthBar();
+  msg.style.color='var(--accent)'; msg.textContent='Saved.';
+  setTimeout(closeProfileModal, 700);
+}
+
 // ═══════════════════════════════════════════════
-// INVITE MEMBER
+// MEMBERS (list / invite / role / remove / self-leave)
 // ═══════════════════════════════════════════════
-function openInviteModal(){
+// cache of member lists per project, populated on demand
+let _membersByProject = {};
+
+async function fetchMembers(projectId){
+  const r = await rpcFetch('get_project_members', { pid: projectId });
+  if(r.error){ console.error('get_project_members', r.error); return []; }
+  _membersByProject[projectId] = r.data || [];
+  return _membersByProject[projectId];
+}
+
+function myRoleInProject(projectId){
+  const list = _membersByProject[projectId] || [];
+  const me = list.find(m => m.user_id === _user?.id);
+  return me?.role || null;
+}
+
+function openMembersModal(){
   const proj = getProject(); if(!proj) return;
+  document.getElementById('membersProjName').textContent = proj.name;
   document.getElementById('inviteEmail').value = '';
   document.getElementById('inviteMsg').textContent = '';
-  document.getElementById('inviteProjName').textContent = proj.name;
-  document.getElementById('inviteModal').classList.add('open');
-  setTimeout(()=>document.getElementById('inviteEmail').focus(), 300);
+  document.getElementById('membersList').innerHTML = '<div style="color:var(--text3);font-size:13px;padding:12px">Loading…</div>';
+  document.getElementById('membersModal').classList.add('open');
+  fetchMembers(proj.id).then(() => renderMembersList());
 }
-function closeInviteModal(){ document.getElementById('inviteModal').classList.remove('open'); }
+function closeMembersModal(){ document.getElementById('membersModal').classList.remove('open'); }
+
+function renderMembersList(){
+  const proj = getProject(); if(!proj) return;
+  const list = _membersByProject[proj.id] || [];
+  const myRole = myRoleInProject(proj.id);
+  const canManage = myRole === 'owner' || myRole === 'admin';
+  const html = list.map(m => {
+    const isSelf = m.user_id === _user?.id;
+    const isOwner = m.role === 'owner';
+    // role selector: owner can set admin/member for non-owner; admin can too
+    let roleHtml;
+    if(isOwner){
+      roleHtml = `<span class="mem-role role-owner">OWNER</span>`;
+    } else if(canManage && !isSelf){
+      roleHtml = `<select class="mem-role-sel" onchange="changeMemberRole('${m.user_id}', this.value)">
+        <option value="admin" ${m.role==='admin'?'selected':''}>Admin</option>
+        <option value="member" ${m.role==='member'?'selected':''}>Member</option>
+      </select>`;
+    } else {
+      roleHtml = `<span class="mem-role role-${m.role}">${m.role.toUpperCase()}</span>`;
+    }
+    // remove button: owners+admins can remove non-owner others; anyone (non-owner) can remove self
+    const showRemove = !isOwner && (canManage || isSelf);
+    const removeHtml = showRemove ? `<button class="mem-remove" onclick="doRemoveMember('${m.user_id}', ${isSelf})" title="${isSelf?'Leave project':'Remove from project'}">✕</button>` : '';
+    return `<div class="mem-row ${isSelf?'is-self':''}">
+      <div class="mem-info">
+        <div class="mem-name">${esc(m.display_name)}${isSelf?' <span style="color:var(--text3);font-weight:400">(you)</span>':''}</div>
+        <div class="mem-email">${esc(m.email)}</div>
+      </div>
+      ${roleHtml}
+      ${removeHtml}
+    </div>`;
+  }).join('');
+  document.getElementById('membersList').innerHTML = html || '<div style="color:var(--text3);padding:12px">No members yet.</div>';
+  // invite row only for owners/admins
+  document.getElementById('memInviteRow').style.display = canManage ? '' : 'none';
+  // leave button: visible when I'm a non-owner member
+  const iAmNonOwnerMember = myRole && myRole !== 'owner';
+  const leaveBtn = document.getElementById('leaveBtn');
+  if(leaveBtn) leaveBtn.style.display = iAmNonOwnerMember ? '' : 'none';
+}
+
 async function submitInvite(){
   const proj = getProject(); if(!proj) return;
   const email = document.getElementById('inviteEmail').value.trim();
   const msgEl = document.getElementById('inviteMsg');
   if(!email){ msgEl.style.color='var(--red)'; msgEl.textContent='Email required'; return; }
   msgEl.style.color='var(--text2)'; msgEl.textContent='Inviting…';
-  const { data, error } = await sb.rpc('invite_member', { pid: proj.id, email_in: email });
+  const { data, error } = await rpcFetch('invite_member', { pid: proj.id, email_in: email });
   if(error){ msgEl.style.color='var(--red)'; msgEl.textContent=error.message; return; }
   if(data && data.ok === false){ msgEl.style.color='var(--red)'; msgEl.textContent=data.error; return; }
   msgEl.style.color='var(--accent)'; msgEl.textContent='Added.';
-  setTimeout(closeInviteModal, 900);
+  document.getElementById('inviteEmail').value = '';
+  await fetchMembers(proj.id);
+  renderMembersList();
+}
+
+async function changeMemberRole(userId, newRole){
+  const proj = getProject(); if(!proj) return;
+  const { data, error } = await rpcFetch('set_member_role', { pid: proj.id, uid: userId, new_role: newRole });
+  if(error){ alert('Role change failed: '+error.message); await fetchMembers(proj.id); renderMembersList(); return; }
+  await fetchMembers(proj.id);
+  renderMembersList();
+}
+
+async function doRemoveMember(userId, isSelf){
+  const proj = getProject(); if(!proj) return;
+  if(!confirm(isSelf ? `Leave "${proj.name}"?` : 'Remove this member from the project?')) return;
+  const { data, error } = await rpcFetch('remove_member', { pid: proj.id, uid: userId });
+  if(error){ alert('Remove failed: '+error.message); return; }
+  if(isSelf){
+    // Refresh the whole app — the project is no longer mine to see
+    closeMembersModal();
+    await hydrate();
+    render();
+  } else {
+    await fetchMembers(proj.id);
+    renderMembersList();
+  }
+}
+
+async function doSelfLeave(){
+  if(!_user) return;
+  await doRemoveMember(_user.id, true);
 }
 
 // ═══════════════════════════════════════════════
@@ -398,8 +525,11 @@ async function boot(){
     await hydrate();
     console.log('[boot] hydrate done. projects:', S.projects.length, 'tasks:', S.tasks.length);
     render();
+    // Preload members for the active project so the assignee dropdown
+    // in new-task / edit-task modals is populated without extra wait.
+    if(S.activeProject) fetchMembers(S.activeProject);
     subscribeRealtime();
-    _booted = true;
+    _lastHydratedUid = _user?.id;
     console.log('[boot] done');
   } catch(e){
     console.error('[boot] failed', e);
@@ -414,19 +544,21 @@ function hardReset(){
   location.reload();
 }
 
-let _booted = false;
+let _lastHydratedUid = null;
 sb.auth.onAuthStateChange(async (event, session) => {
   _user = session?.user || null;
   renderAuthBar();
   if(event === 'SIGNED_IN'){
-    // Skip if boot() is already handling (or just handled) initial hydration.
-    if(!_booted){ _booted = true; return; }
+    // Skip re-hydrating if boot() already hydrated this same user on load.
+    if(_lastHydratedUid === _user?.id) return;
+    _lastHydratedUid = _user?.id;
     hideAuth();
     await hydrate();
     render();
+    if(S.activeProject) fetchMembers(S.activeProject);
     subscribeRealtime();
   } else if(event === 'SIGNED_OUT'){
-    _booted = false;
+    _lastHydratedUid = null;
     showAuth();
   }
 });

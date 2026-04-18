@@ -104,10 +104,9 @@ function renderProjectBar(){
   if(!S.activeProject && S.projects.length) S.activeProject = S.projects[0].id;
   const invBtn = document.getElementById('inviteBtn');
   if(invBtn){
-    const proj = getProject();
-    const u = (typeof _user !== 'undefined') ? _user : null;
-    const canInvite = !!proj && !!u && proj.ownerId === u.id;
-    invBtn.style.display = canInvite ? '' : 'none';
+    // Show the Members button whenever there's an active project — the modal
+    // will render the correct controls based on the viewer's role.
+    invBtn.style.display = S.activeProject ? '' : 'none';
   }
   document.getElementById('projectBar').innerHTML =
     S.projects.map(p=>`<div class="pchip ${p.id===S.activeProject?'active':''}" onclick="selectProject('${p.id}')">${esc(p.name)}</div>`).join('')
@@ -324,7 +323,7 @@ function renderDrawer(){
   }
   subsHtml+=`<div class="st-add-row">
     <input class="st-add-input" id="stInput_${t.id}" placeholder="Add subtask..." onkeydown="if(event.key==='Enter') addSubtask('${t.id}')" />
-    <input class="st-add-assign" id="stAssign_${t.id}" placeholder="@assign" onkeydown="if(event.key==='Enter') addSubtask('${t.id}')" />
+    <select class="st-add-assign" id="stAssign_${t.id}">${buildAssigneeOptions('')}</select>
     <button class="btn btn-ghost btn-sm" onclick="addSubtask('${t.id}')">+</button>
   </div>`;
   const totalSubMs=subs.filter(s=>s.done).reduce((sum,s)=>sum+(s.elapsed||0),0);
@@ -417,7 +416,7 @@ function renderSubtaskDrawer(){
 
   const _phases=getPhases();
   body+=`<div class="d-section"><div class="d-section-label">Assign To</div>
-    <input type="text" class="sub-phase-select" id="subAssign_${s.id}" value="${s.assignee?'@'+esc(s.assignee):''}" placeholder="@name" onchange="saveSubAssignee('${t.id}',${_drawerSubIdx})" />
+    <select class="sub-phase-select" id="subAssign_${s.id}" onchange="saveSubAssignee('${t.id}',${_drawerSubIdx})">${buildAssigneeOptions(s.assignee||'')}</select>
   </div>`;
 
   body+=`<div class="d-section"><div class="d-section-label">Deploy to Phase</div>
@@ -573,14 +572,27 @@ function closeReopenModal(){ document.getElementById('reopenModal').classList.re
 // ═══════════════════════════════════════════════
 let _editId=null;
 
+// Build <option> list of project members for the assignee dropdown.
+// Returns HTML string. `selected` is the currently-assigned name (may be legacy text).
+function buildAssigneeOptions(selected){
+  const members = (typeof _membersByProject !== 'undefined' && _membersByProject[S.activeProject]) || [];
+  const names = members.map(m => m.display_name);
+  // If selected is set but not in members list (legacy or former member), keep it as an option.
+  if(selected && !names.includes(selected)) names.push(selected);
+  const opts = [`<option value="">— Unassigned —</option>`]
+    .concat(names.map(n => `<option value="${esc(n)}" ${n===selected?'selected':''}>${esc(n)}</option>`));
+  return opts.join('');
+}
+
 function openAddTask(ph){
   _editId=null;
   document.getElementById('mTitle').textContent='New Task';
-  ['fTitle','fDesc','fAssignee','fDue'].forEach(id=>document.getElementById(id).value='');
+  ['fTitle','fDesc','fDue'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('fStartDate').value=tsToDateInput(Date.now());
   document.getElementById('fUrgency').value='medium';
   const phases=getPhases();
   document.getElementById('fPhase').innerHTML=phases.map(p=>`<option value="${esc(p)}" ${p===(ph||phases[0])?'selected':''}>${esc(p)}</option>`).join('');
+  document.getElementById('fAssignee').innerHTML=buildAssigneeOptions('');
   document.getElementById('taskModal').classList.add('open');
   setTimeout(()=>document.getElementById('fTitle').focus(),300);
 }
@@ -591,12 +603,12 @@ function openEditTask(id){
   document.getElementById('mTitle').textContent='Edit Task';
   document.getElementById('fTitle').value=t.title;
   document.getElementById('fDesc').value=t.desc||'';
-  document.getElementById('fAssignee').value=t.assignee||'';
   document.getElementById('fDue').value=t.due||'';
   document.getElementById('fStartDate').value=t.startDate?t.startDate.slice(0,10):'';
   document.getElementById('fUrgency').value=t.urgency;
   const phases=getPhases();
   document.getElementById('fPhase').innerHTML=phases.map(p=>`<option value="${esc(p)}" ${p===t.phase?'selected':''}>${esc(p)}</option>`).join('');
+  document.getElementById('fAssignee').innerHTML=buildAssigneeOptions(t.assignee||'');
   document.getElementById('taskModal').classList.add('open');
 }
 
@@ -633,7 +645,11 @@ function saveProject(){
   S.projects.push(p); S.activeProject=p.id;
   save(); closeProjectModal(); render();
 }
-function selectProject(id){ S.activeProject=id; render(); }
+function selectProject(id){
+  S.activeProject=id;
+  if(typeof fetchMembers==='function') fetchMembers(id);
+  render();
+}
 
 // ═══════════════════════════════════════════════
 // COLUMN MANAGEMENT (board-style)
