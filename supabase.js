@@ -265,6 +265,10 @@ async function doSignOut(){
   renderAuthBar();
 }
 
+function hasDisplayName(){
+  const m = _user?.user_metadata || {};
+  return !!(m.full_name || m.name);
+}
 function getMyDisplayName(){
   const m = _user?.user_metadata || {};
   return m.full_name || m.name || _user?.email || '';
@@ -272,9 +276,12 @@ function getMyDisplayName(){
 function renderAuthBar(){
   const el = document.getElementById('authBar');
   if(!el) return;
-  el.innerHTML = _user
-    ? `<span class="auth-email" onclick="openProfileModal()" title="Edit profile" style="cursor:pointer">${esc(getMyDisplayName())}</span><button class="btn btn-ghost btn-sm" onclick="doSignOut()">Sign out</button>`
-    : '';
+  if(!_user){ el.innerHTML = ''; return; }
+  const label = hasDisplayName() ? getMyDisplayName() : '⚠ Set your name';
+  const cls = hasDisplayName() ? 'auth-email' : 'auth-email auth-email-warn';
+  el.innerHTML =
+    `<span class="${cls}" onclick="openProfileModal()" title="Edit profile" style="cursor:pointer">${esc(label)}</span>` +
+    `<button class="btn btn-ghost btn-sm" onclick="doSignOut()">Sign out</button>`;
 }
 
 // PROFILE
@@ -530,6 +537,12 @@ async function boot(){
     if(S.activeProject) fetchMembers(S.activeProject);
     subscribeRealtime();
     _lastHydratedUid = _user?.id;
+    // First-time users (pre-existing accounts from nurseryAI) may not have a
+    // display name — prompt once so they show up nicely in member lists.
+    if(!hasDisplayName() && !sessionStorage.getItem('pt_name_prompted')){
+      sessionStorage.setItem('pt_name_prompted', '1');
+      setTimeout(openProfileModal, 400);
+    }
     console.log('[boot] done');
   } catch(e){
     console.error('[boot] failed', e);
