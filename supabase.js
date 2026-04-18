@@ -374,6 +374,43 @@ function renderMembersList(){
   const iAmNonOwnerMember = myRole && myRole !== 'owner';
   const leaveBtn = document.getElementById('leaveBtn');
   if(leaveBtn) leaveBtn.style.display = iAmNonOwnerMember ? '' : 'none';
+  // delete-project button: owner only
+  const delBtn = document.getElementById('deleteProjBtn');
+  if(delBtn) delBtn.style.display = myRole === 'owner' ? '' : 'none';
+}
+
+// ── DELETE PROJECT ─────────────────────────────────────────
+function openDeleteProjectModal(){
+  const proj = getProject(); if(!proj) return;
+  document.getElementById('deleteProjName').textContent = proj.name;
+  document.getElementById('deletePassword').value = '';
+  document.getElementById('deleteMsg').textContent = '';
+  document.getElementById('deleteProjModal').classList.add('open');
+  setTimeout(()=>document.getElementById('deletePassword').focus(), 200);
+}
+function closeDeleteProjectModal(){ document.getElementById('deleteProjModal').classList.remove('open'); }
+
+async function confirmDeleteProject(){
+  const proj = getProject(); if(!proj) return;
+  const msg = document.getElementById('deleteMsg');
+  const password = document.getElementById('deletePassword').value;
+  if(!password){ msg.style.color='var(--red)'; msg.textContent='Password required'; return; }
+  msg.style.color='var(--text2)'; msg.textContent='Verifying password…';
+  // Verify by attempting sign-in with the current email + entered password.
+  // On success, this just refreshes the session — no other effect.
+  const { error: authErr } = await sb.auth.signInWithPassword({ email: _user.email, password });
+  if(authErr){ msg.style.color='var(--red)'; msg.textContent='Wrong password'; return; }
+  msg.style.color='var(--text2)'; msg.textContent='Deleting…';
+  const { error: delErr } = await sb.from('projects').delete().eq('id', proj.id);
+  if(delErr){ msg.style.color='var(--red)'; msg.textContent='Delete failed: '+delErr.message; return; }
+  // Local cleanup
+  S.projects = S.projects.filter(p => p.id !== proj.id);
+  S.tasks = S.tasks.filter(t => t.projectId !== proj.id);
+  delete _snap.projects[proj.id];
+  S.activeProject = S.projects[0]?.id || null;
+  closeDeleteProjectModal();
+  closeMembersModal();
+  render();
 }
 
 async function submitInvite(){

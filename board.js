@@ -98,7 +98,43 @@ function urgencyLabel(u){ return u==='high'?'URGENT':u.toUpperCase(); }
 // ═══════════════════════════════════════════════
 // RENDER
 // ═══════════════════════════════════════════════
-function render(){ renderProjectBar(); renderBoard(); }
+function render(){ renderProjectBar(); renderDashboard(); renderTimeline(); renderBoard(); }
+
+function renderDashboard(){
+  const el = document.getElementById('dashStats');
+  if(!el) return;
+  const proj = getProject();
+  if(!proj){ el.innerHTML = ''; return; }
+  const all = getAllTasks(proj.id);
+  const total = all.length;
+  const done = all.filter(t => t.done).length;
+  const overdue = all.filter(isOverdue).length;
+  const reopened = all.filter(t => (t.history||[]).some(h => h.type === 'reopened')).length;
+  const pct = total ? Math.round(done / total * 100) : 0;
+  el.innerHTML = `
+    <div class="d-card"><div class="d-lbl">Done</div><div class="d-num pct-accent">${pct}%</div><div class="d-sub">${done}/${total||0} tasks</div></div>
+    <div class="d-card"><div class="d-lbl">Tasks</div><div class="d-num">${total}</div><div class="d-sub">${total-done} open</div></div>
+    <div class="d-card"><div class="d-lbl">Overdue</div><div class="d-num ${overdue?'red':''}">${overdue}</div><div class="d-sub">past due date</div></div>
+    <div class="d-card"><div class="d-lbl">Reopened</div><div class="d-num ${reopened?'orange':''}">${reopened}</div><div class="d-sub">tasks reopened</div></div>`;
+}
+
+function renderTimeline(){
+  const section = document.querySelector('.tl-section');
+  const panel = document.getElementById('tlPanel');
+  if(!section || !panel) return;
+  const open = localStorage.getItem('pt_tl_open') === '1';
+  section.classList.toggle('open', open);
+  if(!open){ panel.innerHTML = ''; return; } // don't build gantt unless shown
+  const proj = getProject();
+  if(!proj){ panel.innerHTML = ''; return; }
+  panel.innerHTML = buildGantt(getAllTasks(proj.id)) || '';
+}
+
+function toggleTimeline(){
+  const open = localStorage.getItem('pt_tl_open') === '1';
+  localStorage.setItem('pt_tl_open', open ? '0' : '1');
+  renderTimeline();
+}
 
 function renderProjectBar(){
   if(!S.activeProject && S.projects.length) S.activeProject = S.projects[0].id;
@@ -649,6 +685,22 @@ function selectProject(id){
   S.activeProject=id;
   if(typeof fetchMembers==='function') fetchMembers(id);
   render();
+  closeSidebar(); // auto-close on mobile after picking
+}
+
+function toggleSidebar(){
+  const sb = document.querySelector('.sidebar');
+  const bd = document.getElementById('sidebarBackdrop');
+  if(!sb || !bd) return;
+  const isOpen = sb.classList.contains('open');
+  sb.classList.toggle('open', !isOpen);
+  bd.classList.toggle('open', !isOpen);
+}
+function closeSidebar(){
+  const sb = document.querySelector('.sidebar');
+  const bd = document.getElementById('sidebarBackdrop');
+  if(sb) sb.classList.remove('open');
+  if(bd) bd.classList.remove('open');
 }
 
 // ═══════════════════════════════════════════════
@@ -935,15 +987,7 @@ document.getElementById('reportBtn').addEventListener('click',()=>{
   const med=all.filter(t=>t.urgency==='medium'&&!t.done).length;
   const low=all.filter(t=>t.urgency==='low'&&!t.done).length;
 
-  let h=`<div class="rs"><div class="rgrid">
-    <div class="rcard"><div class="num" style="color:var(--accent)">${pct}%</div><div class="lbl">Done</div></div>
-    <div class="rcard"><div class="num">${doneN}<span style="font-size:13px;color:var(--text3)">/${total}</span></div><div class="lbl">Tasks</div></div>
-    <div class="rcard"><div class="num" style="color:var(--red)">${overdue}</div><div class="lbl">Overdue</div></div>
-    <div class="rcard"><div class="num" style="color:var(--orange)">${reopenedN}</div><div class="lbl">Reopened</div></div>
-  </div></div>`;
-
-  const ganttHtml=buildGantt(all);
-  if(ganttHtml) h+=`<div class="rs"><div class="rs-title">Timeline</div>${ganttHtml}</div>`;
+  let h='';
 
   if(totalMs>0) h+=`<div class="rs"><div class="rs-title">Time Tracked</div>
     <div class="rcard" style="text-align:left;padding:14px 18px">

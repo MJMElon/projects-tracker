@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Vibe Tracker · MJM</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="board.css?v=19">
+<link rel="stylesheet" href="board.css?v=25">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -16,22 +16,32 @@
 <body>
 <!-- HEADER -->
 <header>
+  <button class="hamburger" id="hamburger" onclick="toggleSidebar()" aria-label="Open menu">☰</button>
   <div class="logo">Vibe<span>Tracker</span></div>
   <div class="hactions">
     <div class="auth-bar" id="authBar"></div>
-    <button class="btn btn-ghost btn-sm" id="inviteBtn" onclick="openMembersModal()" title="Manage project members">👥 Members</button>
-    <button class="btn btn-ghost btn-sm" id="reportBtn">📊 Report</button>
-    <button class="btn btn-primary btn-sm" onclick="openAddTask(null)">+ Task</button>
-    <button class="btn btn-ghost btn-sm" onclick="hardReset()" title="Force logout & clear local session">⟲</button>
+    <button class="btn btn-ghost btn-sm" id="inviteBtn" onclick="openMembersModal()" title="Manage project members"><span class="btn-label-lg">👥 Members</span><span class="btn-label-sm">👥</span></button>
+    <button class="btn btn-ghost btn-sm" id="reportBtn"><span class="btn-label-lg">📊 Report</span><span class="btn-label-sm">📊</span></button>
   </div>
 </header>
+<div class="sidebar-backdrop" id="sidebarBackdrop" onclick="toggleSidebar()"></div>
 
-<!-- PROJECT BAR -->
-<div class="pbar" id="projectBar"></div>
-
-<!-- BOARD -->
-<div class="board-wrap">
-  <div class="board" id="board"></div>
+<!-- MAIN (sidebar + board) -->
+<div class="app-main">
+  <aside class="sidebar">
+    <div class="sb-title">Projects</div>
+    <div class="sb-list" id="projectBar"></div>
+  </aside>
+  <div class="board-wrap">
+    <div class="dash" id="dashStats"></div>
+    <div class="tl-section">
+      <button class="tl-toggle" id="tlToggle" onclick="toggleTimeline()">
+        <span class="tl-caret">▸</span><span>Project Timeline</span>
+      </button>
+      <div class="tl-panel" id="tlPanel"></div>
+    </div>
+    <div class="board" id="board"></div>
+  </div>
 </div>
 
 <!-- DETAIL DRAWER -->
@@ -159,7 +169,25 @@
     <div id="inviteMsg" style="font-size:13px;min-height:18px;margin-top:6px"></div>
     <div class="mactions">
       <button class="btn btn-ghost" onclick="closeMembersModal()">Close</button>
+      <button class="btn btn-danger btn-sm" id="deleteProjBtn" onclick="openDeleteProjectModal()" style="display:none">🗑 Delete project</button>
       <button class="btn btn-danger btn-sm" id="leaveBtn" onclick="doSelfLeave()" style="display:none">Leave project</button>
+    </div>
+  </div>
+</div>
+
+<!-- DELETE PROJECT CONFIRM MODAL -->
+<div class="modal-overlay" id="deleteProjModal">
+  <div class="modal">
+    <span class="mhandle"></span>
+    <div class="mtitle">🗑 Delete project?</div>
+    <div style="color:var(--text2);font-size:13px;margin-bottom:14px;line-height:1.5">
+      This will permanently delete <strong id="deleteProjName" style="color:var(--text)"></strong> and <strong style="color:var(--red)">all its tasks, subtasks, screenshots, and member list</strong>. This cannot be undone.
+    </div>
+    <div class="field"><label>Enter your password to confirm</label><input type="password" id="deletePassword" placeholder="••••••••" autocomplete="current-password" /></div>
+    <div id="deleteMsg" style="font-size:13px;min-height:18px;margin:4px 0 8px"></div>
+    <div class="mactions">
+      <button class="btn btn-ghost" onclick="closeDeleteProjectModal()">Cancel</button>
+      <button class="btn btn-danger" onclick="confirmDeleteProject()">Delete forever</button>
     </div>
   </div>
 </div>
@@ -204,7 +232,7 @@
 <!-- hidden file input -->
 <input type="file" id="ssInput" accept="image/*" style="display:none" multiple />
 
-<script src="board.js?v=19"></script>
-<script src="supabase.js?v=19"></script>
+<script src="board.js?v=25"></script>
+<script src="supabase.js?v=25"></script>
 </body>
 </html>
