@@ -107,8 +107,10 @@ create policy projects_insert on project_tracker.projects
 drop policy if exists projects_update on project_tracker.projects;
 create policy projects_update on project_tracker.projects
   for update to authenticated
-  using (project_tracker.is_member(id))
-  with check (project_tracker.is_member(id));
+  -- owner check included so upsert() (INSERT ... ON CONFLICT DO UPDATE) works
+  -- for brand-new projects, where membership isn't yet established by the trigger.
+  using (project_tracker.is_member(id) or owner_id = auth.uid())
+  with check (project_tracker.is_member(id) or owner_id = auth.uid());
 
 drop policy if exists projects_delete on project_tracker.projects;
 create policy projects_delete on project_tracker.projects
@@ -185,6 +187,19 @@ begin
   return json_build_object('ok', true, 'user_id', uid);
 end; $$;
 grant execute on function project_tracker.invite_member(uuid, text) to authenticated;
+
+-- ── debug: what does Postgres see when a request comes in? ──
+create or replace function project_tracker.whoami() returns json
+language sql stable as $$
+  select json_build_object(
+    'auth_uid',      auth.uid(),
+    'auth_role',     auth.role(),
+    'current_user',  current_user,
+    'session_user',  session_user,
+    'jwt_claims',    nullif(current_setting('request.jwt.claims', true), '')::jsonb
+  )
+$$;
+grant execute on function project_tracker.whoami() to anon, authenticated;
 
 -- ── realtime (optional but nice for multi-user edits) ───────
 do $$

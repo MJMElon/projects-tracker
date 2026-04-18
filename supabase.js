@@ -113,27 +113,27 @@ async function syncNow(){
   if(_syncing){ _pendingSync = true; return; }
   _syncing = true;
   try {
-    // PROJECTS
+    // PROJECTS — split dirty rows into inserts (no snapshot) vs updates (diff exists)
     const projIds = new Set(S.projects.map(p=>p.id));
-    const projectUpserts = [];
+    const projInserts = [];
+    const projUpdates = [];
     S.projects.forEach(p=>{
       const row = projectToRow(p, _user.id);
       const key = JSON.stringify(row);
-      if(_snap.projects[p.id] !== key) projectUpserts.push(row);
+      if(_snap.projects[p.id] === undefined) projInserts.push(row);
+      else if(_snap.projects[p.id] !== key) projUpdates.push(row);
     });
     const projDeletes = Object.keys(_snap.projects).filter(id => !projIds.has(id));
-    if(projectUpserts.length){
-      // Refresh auth — ensure the JWT we're about to send is current
-      const { data: liveUser } = await sb.auth.getUser();
-      console.log('[project upsert] _user.id:', _user.id, '| liveUser.id:', liveUser?.user?.id, '| row.owner_id:', projectUpserts[0].owner_id);
-      if(liveUser?.user?.id && liveUser.user.id !== _user.id){
-        console.warn('[project upsert] _user stale, refreshing');
-        _user = liveUser.user;
-        projectUpserts.forEach(r => r.owner_id = _user.id);
-      }
-      const { error } = await sb.from('projects').upsert(projectUpserts);
-      if(error){ console.error('project upsert', error); alert('Project save failed: '+error.message); }
-      else projectUpserts.forEach(r => { _snap.projects[r.id] = JSON.stringify(r); });
+    if(projInserts.length){
+      const { error } = await sb.from('projects').insert(projInserts);
+      if(error){ console.error('project insert', error); alert('Project save failed: '+error.message); }
+      else projInserts.forEach(r => { _snap.projects[r.id] = JSON.stringify(r); });
+    }
+    for(const row of projUpdates){
+      const { id, ...fields } = row;
+      const { error } = await sb.from('projects').update(fields).eq('id', id);
+      if(error){ console.error('project update', error); alert('Project save failed: '+error.message); }
+      else _snap.projects[id] = JSON.stringify(row);
     }
     if(projDeletes.length){
       const { error } = await sb.from('projects').delete().in('id', projDeletes);
@@ -141,20 +141,28 @@ async function syncNow(){
       projDeletes.forEach(id => delete _snap.projects[id]);
     }
 
-    // TASKS
+    // TASKS — same split: inserts vs updates
     const taskIds = new Set(S.tasks.map(t=>t.id));
-    const taskUpserts = [];
+    const taskInserts = [];
+    const taskUpdates = [];
     S.tasks.forEach(t=>{
       if(!t.projectId || !isUuid(t.projectId)) return; // skip orphan/local-only
       const row = taskToRow(t, _user.id);
       const key = JSON.stringify(row);
-      if(_snap.tasks[t.id] !== key) taskUpserts.push(row);
+      if(_snap.tasks[t.id] === undefined) taskInserts.push(row);
+      else if(_snap.tasks[t.id] !== key) taskUpdates.push(row);
     });
     const taskDeletes = Object.keys(_snap.tasks).filter(id => !taskIds.has(id));
-    if(taskUpserts.length){
-      const { error } = await sb.from('tasks').upsert(taskUpserts);
-      if(error){ console.error('task upsert', error); alert('Save failed: '+error.message); }
-      else taskUpserts.forEach(r => { _snap.tasks[r.id] = JSON.stringify(r); });
+    if(taskInserts.length){
+      const { error } = await sb.from('tasks').insert(taskInserts);
+      if(error){ console.error('task insert', error); alert('Save failed: '+error.message); }
+      else taskInserts.forEach(r => { _snap.tasks[r.id] = JSON.stringify(r); });
+    }
+    for(const row of taskUpdates){
+      const { id, ...fields } = row;
+      const { error } = await sb.from('tasks').update(fields).eq('id', id);
+      if(error){ console.error('task update', error); alert('Save failed: '+error.message); }
+      else _snap.tasks[id] = JSON.stringify(row);
     }
     if(taskDeletes.length){
       const { error } = await sb.from('tasks').delete().in('id', taskDeletes);
