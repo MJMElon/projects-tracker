@@ -234,7 +234,7 @@ function renderCard(t){
   // Row 4: assignee
   const row4=t.assignee?`<div class="tc-row4"><span class="badge b-assign">@${esc(t.assignee)}</span></div>`:'';
 
-  const imgs=t.screenshots?.slice(0,2).map(s=>`<img class="tc-img" src="${s}" />`).join('')||'';
+  const imgs=t.screenshots?.slice(0,2).map(s=>`<img class="tc-img" src="${shotUrl(s)}" />`).join('')||'';
 
   return `<div class="tcard u-${t.urgency} ${t.done?'done':''} ${isReopened?'is-reopened':''}" id="tc-${t.id}" draggable="true" ondragstart="dragStart(event,'${t.id}')" ondragend="dragEnd(event)" onclick="openDrawer('${t.id}')">
     <div class="tc-tick ${t.done?'checked':''}" onclick="event.stopPropagation();handleCheck('${t.id}')"></div>
@@ -369,7 +369,7 @@ function renderDrawer(){
   const shots=t.screenshots||[];
   let ssGrid=shots.map((s,i)=>`
     <div class="ss-thumb" onclick="openLightbox('${t.id}',${i})">
-      <img src="${s}" />
+      <img src="${shotUrl(s)}" loading="lazy" />
       <button class="ss-del" onclick="deleteShot(event,'${t.id}',${i})">✕</button>
     </div>`).join('');
   ssGrid+=`<button class="ss-upload-btn" onclick="triggerUpload('${t.id}')">
@@ -400,6 +400,8 @@ function renderDrawer(){
 
 function deleteFromDrawer(id){
   if(!confirm('Delete this task?')) return;
+  const t = S.tasks.find(x => x.id === id);
+  if(t) removePathsFromStorage(collectTaskPaths(t));
   S.tasks=S.tasks.filter(t=>t.id!==id); save(); closeDrawer(); render();
 }
 function saveTaskCompletedAt(taskId){
@@ -476,7 +478,7 @@ function renderSubtaskDrawer(){
   const shots=s.screenshots;
   let ssGrid=shots.map((ss,i)=>`
     <div class="ss-thumb" onclick="openSubLightbox('${t.id}',${_drawerSubIdx},${i})">
-      <img src="${ss}" />
+      <img src="${shotUrl(ss)}" loading="lazy" />
       <button class="ss-del" onclick="deleteSubShot(event,'${t.id}',${_drawerSubIdx},${i})">✕</button>
     </div>`).join('');
   ssGrid+=`<button class="ss-upload-btn" onclick="triggerSubUpload('${t.id}',${_drawerSubIdx})">
@@ -542,20 +544,22 @@ function saveSubPhase(taskId,idx){
 function deleteSubtaskFromDrawer(taskId,idx){
   if(!confirm('Delete this subtask?')) return;
   const t=S.tasks.find(t=>t.id===taskId); if(!t||!t.subtasks) return;
-  t.subtasks.splice(idx,1); _drawerSubIdx=null;
+  const removedSub = t.subtasks.splice(idx,1)[0]; _drawerSubIdx=null;
+  if(removedSub) removePathsFromStorage(collectTaskPaths({ screenshots: removedSub.screenshots }));
   save(); render(); renderDrawer();
 }
 function openSubLightbox(taskId,idx,shotIdx){
   const t=S.tasks.find(t=>t.id===taskId); if(!t||!t.subtasks) return;
   const s=t.subtasks[idx]; if(!s||!s.screenshots) return;
-  document.getElementById('lbImg').src=s.screenshots[shotIdx];
+  document.getElementById('lbImg').src=shotUrl(s.screenshots[shotIdx]);
   document.getElementById('lightbox').classList.add('open');
 }
 function deleteSubShot(e,taskId,idx,shotIdx){
   e.stopPropagation();
   const t=S.tasks.find(t=>t.id===taskId); if(!t||!t.subtasks) return;
   const s=t.subtasks[idx]; if(!s||!s.screenshots) return;
-  s.screenshots.splice(shotIdx,1);
+  const removed = s.screenshots.splice(shotIdx,1)[0];
+  removeFromStorage(removed);
   save(); renderDrawer(); render();
 }
 
@@ -797,7 +801,8 @@ function toggleSubtask(taskId,idx){
 
 function deleteSubtask(taskId,idx){
   const t=S.tasks.find(t=>t.id===taskId); if(!t||!t.subtasks) return;
-  t.subtasks.splice(idx,1);
+  const removedSub = t.subtasks.splice(idx,1)[0];
+  if(removedSub) removePathsFromStorage(collectTaskPaths({ screenshots: removedSub.screenshots }));
   save(); renderDrawer(); render();
 }
 
@@ -816,43 +821,114 @@ function triggerSubUpload(taskId,idx){
   document.getElementById('ssInput').click();
 }
 
-document.getElementById('ssInput').addEventListener('change',async function(){
-  const files=Array.from(this.files);
+const SS_BUCKET = 'vibetracker-screenshots';
+
+// Compress an image File to a JPEG Blob, scaled to max `maxDim` on the longest side.
+async function compressImage(file, maxDim = 1600, quality = 0.78){
+  // Non-images (shouldn't happen given accept="image/*") pass through as-is.
+  if(!file.type.startsWith('image/')) return file;
+  const img = await new Promise((res, rej) => {
+    const i = new Image();
+    i.onload = () => res(i);
+    i.onerror = rej;
+    i.src = URL.createObjectURL(file);
+  });
+  try {
+    const ratio = Math.min(1, maxDim / Math.max(img.width, img.height));
+    const w = Math.max(1, Math.round(img.width * ratio));
+    const h = Math.max(1, Math.round(img.height * ratio));
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff'; // flatten any transparency for JPEG
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(img, 0, 0, w, h);
+    return await new Promise(res => canvas.toBlob(res, 'image/jpeg', quality));
+  } finally {
+    URL.revokeObjectURL(img.src);
+  }
+}
+
+async function uploadScreenshot(projectId, file){
+  const blob = await compressImage(file);
+  const path = `${projectId}/${uuid()}.jpg`;
+  const { error } = await sb.storage.from(SS_BUCKET).upload(path, blob, {
+    contentType: 'image/jpeg', cacheControl: '31536000'
+  });
+  if(error){ console.error('screenshot upload', error); alert('Upload failed: '+error.message); return null; }
+  return path;
+}
+
+// Resolve a screenshot value to a URL usable in <img src>.
+// Accepts legacy base64 data URLs OR storage paths.
+function shotUrl(s){
+  if(!s) return '';
+  if(s.startsWith('data:') || s.startsWith('http://') || s.startsWith('https://')) return s;
+  return sb.storage.from(SS_BUCKET).getPublicUrl(s).data.publicUrl;
+}
+
+document.getElementById('ssInput').addEventListener('change', async function(){
+  const files = Array.from(this.files);
+  this.value = '';
   if(_uploadForSubtask){
-    const {taskId,idx}=_uploadForSubtask;
-    const t=S.tasks.find(t=>t.id===taskId); if(!t||!t.subtasks) return;
-    const s=t.subtasks[idx]; if(!s) return;
-    if(!s.screenshots) s.screenshots=[];
-    for(const f of files){ s.screenshots.push(await toBase64(f)); }
+    const { taskId, idx } = _uploadForSubtask;
+    const t = S.tasks.find(t => t.id === taskId); if(!t || !t.subtasks) return;
+    const s = t.subtasks[idx]; if(!s) return;
+    if(!s.screenshots) s.screenshots = [];
+    for(const f of files){
+      const path = await uploadScreenshot(t.projectId, f);
+      if(path) s.screenshots.push(path);
+    }
     save(); renderDrawer(); render();
-    _uploadForSubtask=null;
+    _uploadForSubtask = null;
   } else if(_uploadForTaskId){
-    const t=S.tasks.find(t=>t.id===_uploadForTaskId); if(!t) return;
-    if(!t.screenshots) t.screenshots=[];
-    for(const f of files){ t.screenshots.push(await toBase64(f)); }
-    save(); if(_drawerId===_uploadForTaskId){ renderDrawer(); render(); } else render();
+    const t = S.tasks.find(t => t.id === _uploadForTaskId); if(!t) return;
+    if(!t.screenshots) t.screenshots = [];
+    for(const f of files){
+      const path = await uploadScreenshot(t.projectId, f);
+      if(path) t.screenshots.push(path);
+    }
+    save(); if(_drawerId === _uploadForTaskId){ renderDrawer(); render(); } else render();
+    _uploadForTaskId = null;
   }
 });
 
-function toBase64(file){
-  return new Promise((res,rej)=>{
-    const r=new FileReader();
-    r.onload=()=>res(r.result);
-    r.onerror=rej;
-    r.readAsDataURL(file);
+// Best-effort remove the file from storage. Skips legacy base64 entries.
+async function removeFromStorage(pathOrData){
+  if(!pathOrData || pathOrData.startsWith('data:') || pathOrData.startsWith('http')) return;
+  try { await sb.storage.from(SS_BUCKET).remove([pathOrData]); }
+  catch(e){ console.warn('storage remove failed', e); }
+}
+
+// Collect storage paths (ignore legacy base64) from a task incl. its subtasks.
+function collectTaskPaths(task){
+  const out = [];
+  const keep = s => s && typeof s === 'string' && !s.startsWith('data:') && !s.startsWith('http');
+  (task?.screenshots || []).forEach(s => { if(keep(s)) out.push(s); });
+  (task?.subtasks || []).forEach(sub => {
+    (sub?.screenshots || []).forEach(s => { if(keep(s)) out.push(s); });
   });
+  return out;
+}
+
+// Batch-delete a list of paths. Safe with 0 entries. Best-effort.
+async function removePathsFromStorage(paths){
+  if(!paths || !paths.length) return;
+  try { await sb.storage.from(SS_BUCKET).remove(paths); }
+  catch(e){ console.warn('storage batch remove failed', e); }
 }
 
 function deleteShot(e,taskId,idx){
   e.stopPropagation();
   const t=S.tasks.find(t=>t.id===taskId); if(!t||!t.screenshots) return;
-  t.screenshots.splice(idx,1);
+  const removed = t.screenshots.splice(idx,1)[0];
+  removeFromStorage(removed);
   save(); if(_drawerId===taskId){ renderDrawer(); render(); } else render();
 }
 
 function openLightbox(taskId,idx){
   const t=S.tasks.find(t=>t.id===taskId); if(!t||!t.screenshots) return;
-  document.getElementById('lbImg').src=t.screenshots[idx];
+  document.getElementById('lbImg').src=shotUrl(t.screenshots[idx]);
   document.getElementById('lightbox').classList.add('open');
 }
 function closeLightbox(){ document.getElementById('lightbox').classList.remove('open'); }
@@ -871,7 +947,12 @@ function openCtx(e,id){
 function closeCtx(){ document.getElementById('ctx').classList.remove('open'); _ctxId=null; }
 function ctxEdit(){ const id=_ctxId; closeCtx(); openEditTask(id); }
 function ctxToggle(){ const id=_ctxId; closeCtx(); handleCheck(id); }
-function ctxDelete(){ if(!confirm('Delete?')) return; S.tasks=S.tasks.filter(t=>t.id!==_ctxId); save(); render(); closeCtx(); }
+function ctxDelete(){
+  if(!confirm('Delete?')) return;
+  const t = S.tasks.find(x => x.id === _ctxId);
+  if(t) removePathsFromStorage(collectTaskPaths(t));
+  S.tasks=S.tasks.filter(t=>t.id!==_ctxId); save(); render(); closeCtx();
+}
 document.addEventListener('click',e=>{ if(!e.target.closest('.ctx')) closeCtx(); if(!e.target.closest('.ctx')) closeColCtx(); });
 
 // ═══════════════════════════════════════════════

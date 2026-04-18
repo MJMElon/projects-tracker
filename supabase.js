@@ -430,6 +430,15 @@ async function confirmDeleteProject(){
   const { error: authErr } = await sb.auth.signInWithPassword({ email: _user.email, password });
   if(authErr){ msg.style.color='var(--red)'; msg.textContent='Wrong password'; return; }
   msg.style.color='var(--text2)'; msg.textContent='Deleting…';
+  // Wipe storage folder BEFORE the DB delete — storage RLS requires the caller
+  // to still be a project member (which the cascade would revoke otherwise).
+  try {
+    const { data: files } = await sb.storage.from(SS_BUCKET).list(proj.id, { limit: 1000 });
+    if(files?.length){
+      const paths = files.map(f => `${proj.id}/${f.name}`);
+      await sb.storage.from(SS_BUCKET).remove(paths);
+    }
+  } catch(e){ console.warn('project storage cleanup failed (continuing)', e); }
   const { error: delErr } = await sb.from('projects').delete().eq('id', proj.id);
   if(delErr){ msg.style.color='var(--red)'; msg.textContent='Delete failed: '+delErr.message; return; }
   // Local cleanup

@@ -341,6 +341,40 @@ language sql stable as $$
 $$;
 grant execute on function project_tracker.whoami() to anon, authenticated;
 
+-- ── storage: screenshots bucket ─────────────────────────────
+-- Public bucket; security by obscurity (UUID paths). Writes require project
+-- membership. Reads are allowed for anyone with the URL (public bucket).
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('vibetracker-screenshots', 'vibetracker-screenshots', true, 5242880,
+        array['image/jpeg','image/png','image/webp'])
+on conflict (id) do update set
+  public = excluded.public,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
+
+-- Path convention: `{project_id}/{random-uuid}.jpg`
+drop policy if exists "vt_ss_insert" on storage.objects;
+create policy "vt_ss_insert" on storage.objects
+for insert to authenticated with check (
+  bucket_id = 'vibetracker-screenshots'
+  and exists (
+    select 1 from project_tracker.project_members pm
+    where pm.user_id = auth.uid()
+      and pm.project_id::text = split_part(name, '/', 1)
+  )
+);
+
+drop policy if exists "vt_ss_delete" on storage.objects;
+create policy "vt_ss_delete" on storage.objects
+for delete to authenticated using (
+  bucket_id = 'vibetracker-screenshots'
+  and exists (
+    select 1 from project_tracker.project_members pm
+    where pm.user_id = auth.uid()
+      and pm.project_id::text = split_part(name, '/', 1)
+  )
+);
+
 -- ── realtime (optional but nice for multi-user edits) ───────
 do $$
 begin
