@@ -6,7 +6,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Vibe Tracker · MJM</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="board.css?v=26">
+<link rel="stylesheet" href="board.css?v=28">
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0d0f12">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="VibeTracker">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -160,7 +167,11 @@
 <div class="modal-overlay" id="membersModal">
   <div class="modal" style="max-width:520px">
     <span class="mhandle"></span>
-    <div class="mtitle">👥 Members · <span id="membersProjName" style="color:var(--accent)"></span></div>
+    <div class="mtitle" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <span>👥 Members ·</span>
+      <span id="membersProjName" style="color:var(--accent)"></span>
+      <button class="btn btn-ghost btn-sm" id="renameProjBtn" onclick="openRenameProjectModal()" title="Rename project" style="display:none;margin-left:auto">✏️ Rename</button>
+    </div>
     <div class="mem-list" id="membersList"></div>
     <div class="mem-invite" id="memInviteRow">
       <input type="email" id="inviteEmail" placeholder="Invite by email…" />
@@ -171,6 +182,20 @@
       <button class="btn btn-ghost" onclick="closeMembersModal()">Close</button>
       <button class="btn btn-danger btn-sm" id="deleteProjBtn" onclick="openDeleteProjectModal()" style="display:none">🗑 Delete project</button>
       <button class="btn btn-danger btn-sm" id="leaveBtn" onclick="doSelfLeave()" style="display:none">Leave project</button>
+    </div>
+  </div>
+</div>
+
+<!-- RENAME PROJECT MODAL -->
+<div class="modal-overlay" id="renameProjModal">
+  <div class="modal">
+    <span class="mhandle"></span>
+    <div class="mtitle">✏️ Rename Project</div>
+    <div class="field"><label>Name</label><input type="text" id="renameProjInput" placeholder="Project name" /></div>
+    <div id="renameProjMsg" style="font-size:13px;min-height:18px;margin:4px 0 8px"></div>
+    <div class="mactions">
+      <button class="btn btn-ghost" onclick="closeRenameProjectModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveRenameProject()">Save</button>
     </div>
   </div>
 </div>
@@ -232,7 +257,7 @@
 <!-- hidden file input -->
 <input type="file" id="ssInput" accept="image/*" style="display:none" multiple />
 
-<script src="board.js?v=26"></script>
-<script src="supabase.js?v=26"></script>
+<script src="board.js?v=28"></script>
+<script src="supabase.js?v=28"></script>
 </body>
 </html>

@@ -377,6 +377,35 @@ function renderMembersList(){
   // delete-project button: owner only
   const delBtn = document.getElementById('deleteProjBtn');
   if(delBtn) delBtn.style.display = myRole === 'owner' ? '' : 'none';
+  // rename button: owner or admin
+  const renameBtn = document.getElementById('renameProjBtn');
+  if(renameBtn) renameBtn.style.display = (myRole === 'owner' || myRole === 'admin') ? '' : 'none';
+}
+
+// ── RENAME PROJECT ─────────────────────────────────────────
+function openRenameProjectModal(){
+  const proj = getProject(); if(!proj) return;
+  document.getElementById('renameProjInput').value = proj.name || '';
+  document.getElementById('renameProjMsg').textContent = '';
+  document.getElementById('renameProjModal').classList.add('open');
+  setTimeout(()=>{ const i=document.getElementById('renameProjInput'); i.focus(); i.select(); }, 200);
+}
+function closeRenameProjectModal(){ document.getElementById('renameProjModal').classList.remove('open'); }
+async function saveRenameProject(){
+  const proj = getProject(); if(!proj) return;
+  const newName = document.getElementById('renameProjInput').value.trim();
+  const msg = document.getElementById('renameProjMsg');
+  if(!newName){ msg.style.color='var(--red)'; msg.textContent='Name required'; return; }
+  if(newName === proj.name){ closeRenameProjectModal(); return; }
+  msg.style.color='var(--text2)'; msg.textContent='Saving…';
+  const { error } = await sb.from('projects').update({ name: newName }).eq('id', proj.id);
+  if(error){ msg.style.color='var(--red)'; msg.textContent='Failed: '+error.message; return; }
+  // Update local state and snapshot so subsequent diffs don't re-send
+  proj.name = newName;
+  _snap.projects[proj.id] = JSON.stringify(projectToRow(proj, _user?.id));
+  document.getElementById('membersProjName').textContent = newName;
+  render();
+  closeRenameProjectModal();
 }
 
 // ── DELETE PROJECT ─────────────────────────────────────────
