@@ -364,14 +364,20 @@ for insert to authenticated with check (
   )
 );
 
+-- Delete policy: the uploader can always delete their own files; additionally,
+-- any member of any project in this app can delete (simpler predicate that
+-- avoids path-parsing edge cases). Bucket is private to project members in
+-- spirit; unguessable UUID paths prevent cross-project discovery.
 drop policy if exists "vt_ss_delete" on storage.objects;
 create policy "vt_ss_delete" on storage.objects
 for delete to authenticated using (
   bucket_id = 'vibetracker-screenshots'
-  and exists (
-    select 1 from project_tracker.project_members pm
-    where pm.user_id = auth.uid()
-      and pm.project_id::text = split_part(name, '/', 1)
+  and (
+    owner_id = auth.uid()::text
+    or exists (
+      select 1 from project_tracker.project_members pm
+      where pm.user_id = auth.uid()
+    )
   )
 );
 

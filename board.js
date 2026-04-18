@@ -912,11 +912,39 @@ function isStoragePath(s){
   return typeof s === 'string' && s && !s.startsWith('data:') && !s.startsWith('http') && !s.startsWith('blob:');
 }
 
+// Raw-fetch storage delete — bypasses supabase-js auth state, uses JWT directly.
+async function storageDeleteRaw(paths){
+  if(!paths || !paths.length) return { data: [], error: null };
+  const stored = (typeof readStoredSession === 'function') ? readStoredSession() : null;
+  const token = stored?.access_token;
+  if(!token) return { data: null, error: { message: 'no access token' } };
+  try {
+    const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${SS_BUCKET}`, {
+      method: 'DELETE',
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + token,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ prefixes: paths })
+    });
+    const body = await res.json().catch(() => null);
+    if(!res.ok) return { data: null, error: { message: body?.message || ('HTTP ' + res.status), status: res.status } };
+    return { data: body, error: null };
+  } catch(e){
+    return { data: null, error: { message: e.message || String(e) } };
+  }
+}
+
 // Best-effort remove the file from storage. Skips legacy/in-flight entries.
 async function removeFromStorage(pathOrData){
   if(!isStoragePath(pathOrData)) return;
-  try { await sb.storage.from(SS_BUCKET).remove([pathOrData]); }
-  catch(e){ console.warn('storage remove failed', e); }
+  try {
+    const { data, error } = await sb.storage.from(SS_BUCKET).remove([pathOrData]);
+    if(error) console.warn('[storage] remove error:', error.message, pathOrData);
+    else if(!data?.length) console.warn('[storage] no rows deleted for', pathOrData);
+    else console.log('[storage] removed', pathOrData);
+  } catch(e){ console.warn('[storage] remove threw', e); }
 }
 
 // Collect storage paths (ignore legacy base64 / in-flight blob) from a task
@@ -933,8 +961,11 @@ function collectTaskPaths(task){
 // Batch-delete a list of paths. Safe with 0 entries. Best-effort.
 async function removePathsFromStorage(paths){
   if(!paths || !paths.length) return;
-  try { await sb.storage.from(SS_BUCKET).remove(paths); }
-  catch(e){ console.warn('storage batch remove failed', e); }
+  try {
+    const { data, error } = await sb.storage.from(SS_BUCKET).remove(paths);
+    if(error) console.warn('[storage] batch remove error:', error.message);
+    else console.log('[storage] batch removed:', data?.length, 'of', paths.length);
+  } catch(e){ console.warn('[storage] batch remove threw', e); }
 }
 
 function deleteShot(e,taskId,idx){

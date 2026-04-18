@@ -603,6 +603,15 @@ async function boot(){
     renderAuthBar();
     if(!_user){ console.log('[boot] no user → showAuth'); showAuth(); return; }
     hideAuth();
+    // Tell supabase-js about our session so its SDK calls (storage, realtime)
+    // include the JWT. Raced with a 4s timeout in case it hangs.
+    try {
+      await Promise.race([
+        sb.auth.setSession({ access_token: stored.access_token, refresh_token: stored.refresh_token }),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('setSession timeout')), 4000))
+      ]);
+      console.log('[boot] setSession OK');
+    } catch(e){ console.warn('[boot] setSession failed/timed out (continuing)', e); }
     // Set the dedup flag BEFORE awaiting hydrate so that onAuthStateChange's
     // SIGNED_IN event (which fires concurrently) doesn't trigger a second
     // hydrate on top of ours.
