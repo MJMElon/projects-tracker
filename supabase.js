@@ -82,20 +82,36 @@ function isUuid(s){ return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-
 // ═══════════════════════════════════════════════
 // HYDRATE (load from server into S)
 // ═══════════════════════════════════════════════
+// Raw-fetch an RPC endpoint with the current access token — bypasses
+// supabase-js internals (which have been hanging for this user).
+async function rpcFetch(fnName, args = {}){
+  const stored = readStoredSession();
+  const token = stored?.access_token;
+  const res = await fetch(SUPABASE_URL + '/rest/v1/rpc/' + fnName, {
+    method: 'POST',
+    headers: {
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': 'Bearer ' + token,
+      'Content-Type': 'application/json',
+      'Content-Profile': 'project_tracker',
+      'Accept-Profile': 'project_tracker'
+    },
+    body: JSON.stringify(args)
+  });
+  const body = await res.json().catch(() => null);
+  if(!res.ok) return { data: null, error: { message: body?.message || ('HTTP ' + res.status), status: res.status } };
+  return { data: body, error: null };
+}
+
 async function hydrate(){
-  // Use RPCs instead of direct table SELECTs — GETs on custom schemas were
-  // hanging for this client; RPCs are POSTs and go through reliably.
-  const { data: projects, error: pe } = await sb.rpc('get_my_projects');
-  if(pe){
-    console.error('load projects', pe);
-    const hint = /schema|not found|relation|function/i.test(pe.message||'')
-      ? '\n\nFix: make sure project_tracker is in Settings → API → Exposed schemas, and the get_my_projects() function was created.'
-      : '';
-    alert('Failed to load projects: '+pe.message+hint);
-    return;
-  }
-  const { data: tasks, error: te } = await sb.rpc('get_my_tasks');
-  if(te){ console.error('load tasks', te); alert('Failed to load tasks: '+te.message); return; }
+  console.log('[hydrate] fetching get_my_projects');
+  const { data: projects, error: pe } = await rpcFetch('get_my_projects');
+  console.log('[hydrate] projects returned. count:', projects?.length, 'error:', pe?.message);
+  if(pe){ alert('Failed to load projects: '+pe.message); return; }
+  console.log('[hydrate] fetching get_my_tasks');
+  const { data: tasks, error: te } = await rpcFetch('get_my_tasks');
+  console.log('[hydrate] tasks returned. count:', tasks?.length, 'error:', te?.message);
+  if(te){ alert('Failed to load tasks: '+te.message); return; }
 
   S.projects = (projects||[]).map(rowToProject);
   S.tasks = (tasks||[]).map(rowToTask);
