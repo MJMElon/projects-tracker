@@ -140,7 +140,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:14p
 .b-overdue{background:var(--red-dim);color:var(--red);border:1px solid rgba(248,113,113,.2);}
 .b-reopen{background:var(--orange-dim);color:var(--orange);border:1px solid rgba(251,146,60,.2);}
 .b-time{background:var(--accent-dim);color:var(--accent);border:1px solid rgba(74,222,128,.2);}
-.b-assign{background:var(--purple-dim);color:var(--purple);border:1px solid rgba(167,139,250,.2);}
+.b-assign{background:var(--surface);color:var(--text2);border:1px solid var(--border);}
+.assign-wrap{display:inline-flex;align-items:center;gap:4px;}
 /* Deployed subtask card in column */
 .tcard-sub{padding:8px 10px;gap:4px;border-style:dashed;}
 .tcard-sub.u-high{background:rgba(248,113,113,.06);border-color:rgba(248,113,113,.22);}
@@ -228,16 +229,16 @@ header{display:flex;align-items:center;justify-content:space-between;padding:14p
 
 /* subtasks */
 .subtask-list{display:flex;flex-direction:column;gap:6px;}
-.subtask-row{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);transition:border-color .12s;}
-.subtask-row:hover{border-color:var(--border2);}
-.st-check{width:18px;height:18px;border:1.5px solid var(--border2);border-radius:3px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .13s;}
-.st-check:hover{border-color:var(--accent);}
-.st-check.checked{background:var(--accent);border-color:var(--accent);}
-.st-check.checked::after{content:'✓';color:#0d0f12;font-size:11px;font-weight:700;}
+.subtask-row{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;background:var(--surface3);border:1px solid var(--border2);transition:border-color .12s;}
+.subtask-row:hover{border-color:var(--accent-dim);}
+.st-check{width:18px;height:18px;border:2px solid #5a6575;border-radius:50%;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .13s;background:rgba(255,255,255,.04);box-shadow:inset 0 0 0 1px rgba(0,0,0,.25);}
+.st-check:hover{border-color:var(--accent);background:rgba(74,222,128,.15);box-shadow:0 0 0 3px rgba(74,222,128,.15);}
+.st-check.checked{background:var(--accent);border-color:var(--accent);box-shadow:0 0 0 2px rgba(74,222,128,.25);}
+.st-check.checked::after{content:'✓';color:#0d0f12;font-size:11px;font-weight:800;line-height:1;}
 .st-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}
 .st-title{font-size:14px;color:var(--text2);line-height:1.5;cursor:pointer;}
 .st-title.done{text-decoration:line-through;color:var(--text3);}
-.st-assign{font-size:11px;color:var(--text3);flex-shrink:0;}
+.st-assign{font-size:11px;font-weight:500;color:var(--text2);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 8px;white-space:nowrap;flex-shrink:0;}
 .st-time{font-size:11px;color:var(--accent);background:var(--accent-dim);border:1px solid rgba(74,222,128,.2);border-radius:10px;padding:2px 8px;white-space:nowrap;flex-shrink:0;}
 .st-del{background:none;border:none;color:var(--text3);cursor:pointer;font-size:15px;padding:2px 6px;border-radius:3px;opacity:0;transition:all .1s;line-height:1;}
 .subtask-row:hover .st-del{opacity:1;}
@@ -247,7 +248,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:14p
 .st-add-row{display:flex;gap:8px;margin-top:8px;}
 .st-add-input{flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 12px;font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;outline:none;transition:border-color .14s;}
 .st-add-input:focus{border-color:var(--accent);}
-.st-add-assign{width:100px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text2);padding:8px 12px;font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;outline:none;}
+.st-add-assign{width:128px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text2);padding:8px 10px;font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;outline:none;}
 .st-add-assign:focus{border-color:var(--accent);}
 .st-progress{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
 .st-progress-track{flex:1;height:5px;background:var(--border);border-radius:4px;overflow:hidden;}

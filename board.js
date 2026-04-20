@@ -265,7 +265,7 @@ function renderCard(t){
   const row3=r3.length?`<div class="tc-row3">${r3.join('')}</div>`:'';
 
   // Row 4: assignee
-  const row4=t.assignee?`<div class="tc-row4"><span class="badge b-assign">@${esc(t.assignee)}</span></div>`:'';
+  const row4=t.assignee?`<div class="tc-row4"><span class="assign-wrap">👤<span class="badge b-assign">@${esc(t.assignee)}</span></span></div>`:'';
 
   const imgs=t.screenshots?.slice(0,2).map(s=>`<img class="tc-img" src="${shotUrl(s)}" />`).join('')||'';
 
@@ -285,7 +285,7 @@ function renderSubCard(t,s,idx){
   const r3=[];
   if(timeFmt) r3.push(`<span class="badge b-time">⏱ ${timeFmt}</span>`);
   if(subReopens.length) r3.push(`<span class="badge b-reopen">↩ ${subReopens.length}</span>`);
-  const subRow4=s.assignee?`<div class="tc-row4"><span class="badge b-assign">@${esc(s.assignee)}</span></div>`:'';
+  const subRow4=s.assignee?`<div class="tc-row4"><span class="assign-wrap">👤<span class="badge b-assign">@${esc(s.assignee)}</span></span></div>`:'';
   return `<div class="tcard tcard-sub u-${t.urgency}" id="${subId}" draggable="true" ondragstart="dragStartSub(event,'${t.id}',${idx})" ondragend="dragEndSub(event)" onclick="openSubtaskDetail('${t.id}',${idx})">
     <div class="tc-tick ${s.done?'checked':''}" onclick="event.stopPropagation();toggleSubtask('${t.id}',${idx})"></div>
     <div class="tc-content">
@@ -342,7 +342,7 @@ function renderDrawer(){
   badges+=`<span class="badge b-${t.urgency}">${urgencyLabel(t.urgency)}</span>`;
   if(t.done) badges+=`<span class="badge b-done">✓ DONE</span>`;
   if(isReopened) badges+=`<span class="badge b-reopen">↩ REOPENED</span>`;
-  if(t.assignee) badges+=`<span class="badge b-assign">@${esc(t.assignee)}</span>`;
+  if(t.assignee) badges+=`<span class="assign-wrap">👤<span class="badge b-assign">@${esc(t.assignee)}</span></span>`;
   if(t.startDate) badges+=`<span class="badge b-meta">▶ ${fmtDate(t.startDate)}</span>`;
   if(t.due) badges+=`<span class="badge ${isOverdue(t)?'b-overdue':'b-meta'}">⏹ ${fmtDate(t.due)}${isOverdue(t)?' ⚠':''}</span>`;
   if(timeFmt) badges+=`<span class="badge b-time">⏱ ${timeFmt}</span>`;
@@ -384,7 +384,7 @@ function renderDrawer(){
           ${s.phase&&!s.done?`<div class="st-phase">📌 Deployed to ${esc(s.phase)}</div>`:''}
         </div>
         ${stReopens?`<div class="st-reopen">↩ ${stReopens}</div>`:''}
-        ${s.assignee?`<div class="st-assign">@${esc(s.assignee)}</div>`:''}
+        ${s.assignee?`<span class="assign-wrap">👤<span class="st-assign">@${esc(s.assignee)}</span></span>`:''}
         ${subTimeFmt?`<div class="st-time">⏱ ${subTimeFmt}</div>`:''}
         <button class="st-del" onclick="event.stopPropagation();deleteSubtask('${t.id}',${i})">✕</button>
       </div>`;
@@ -481,7 +481,7 @@ function renderSubtaskDrawer(){
   if(s.done) badges+=`<span class="badge b-done">✓ DONE</span>`;
   if(s.phase&&!s.done) badges+=`<span class="badge b-meta">📌 ${esc(s.phase)}</span>`;
   if(timeFmt) badges+=`<span class="badge b-time">⏱ ${timeFmt}</span>`;
-  if(s.assignee) badges+=`<span class="badge b-assign">@${esc(s.assignee)}</span>`;
+  if(s.assignee) badges+=`<span class="assign-wrap">👤<span class="badge b-assign">@${esc(s.assignee)}</span></span>`;
   if(drawerReopens.length) badges+=`<span class="badge b-reopen">↩ ${drawerReopens.length}x reopened</span>`;
   if(badges) body+=`<div class="d-section"><div class="d-badges">${badges}</div></div>`;
 
@@ -664,7 +664,7 @@ function buildAssigneeOptions(selected){
   const names = members.map(m => m.display_name);
   // If selected is set but not in members list (legacy or former member), keep it as an option.
   if(selected && !names.includes(selected)) names.push(selected);
-  const opts = [`<option value="">— Unassigned —</option>`]
+  const opts = [`<option value="">Unassigned</option>`]
     .concat(names.map(n => `<option value="${esc(n)}" ${n===selected?'selected':''}>${esc(n)}</option>`));
   return opts.join('');
 }
