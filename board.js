@@ -149,6 +149,27 @@ function renderProjectBar(){
     +`<button class="dashed-btn" onclick="openProjectModal()">+ Project</button>`;
 }
 
+// Auto-hide threshold: tasks marked done more than 30 days ago
+const OLD_DONE_MS = 30 * 86400000;
+function isOldDone(t){
+  return !!(t.done && t.completedAt && (Date.now() - t.completedAt) > OLD_DONE_MS);
+}
+function getOldDoneShown(){
+  try { return JSON.parse(localStorage.getItem('pt_show_old_done') || '{}'); }
+  catch(e){ return {}; }
+}
+function isOldDoneShown(projectId, phase){
+  return !!getOldDoneShown()[`${projectId}:${phase}`];
+}
+function toggleOldDoneShown(phase){
+  const pid = S.activeProject; if(!pid) return;
+  const map = getOldDoneShown();
+  const key = `${pid}:${phase}`;
+  map[key] = !map[key];
+  localStorage.setItem('pt_show_old_done', JSON.stringify(map));
+  render();
+}
+
 function renderBoard(){
   const board=document.getElementById('board');
   const proj=getProject();
@@ -158,9 +179,12 @@ function renderBoard(){
     const tasks=getColTasks(proj.id,ph);
     const doneN=tasks.filter(t=>t.done).length;
     const cc=colColor(i);
+    const showOld = isOldDoneShown(proj.id, ph);
     // Build unified card list: main tasks + deployed subtasks, sorted by order
     const items=[];
     tasks.forEach(t=>{
+      // Hide old-completed tasks unless the toggle is on.
+      if(isOldDone(t) && !showOld) return;
       items.push({type:'task',task:t,order:typeof t.order==='number'?t.order:9999,done:t.done});
     });
     S.tasks.filter(t=>t.projectId===proj.id).forEach(t=>{
@@ -174,6 +198,14 @@ function renderBoard(){
       return 0;
     });
     const cardsHtml=items.map(it=>it.type==='task'?renderCard(it.task):renderSubCard(it.task,it.sub,it.idx)).join('');
+    const hiddenCount = tasks.filter(isOldDone).length;
+    const toggleHtml = (hiddenCount > 0 || showOld)
+      ? `<button class="col-old-toggle" onclick="toggleOldDoneShown('${esc(ph)}')">${
+          showOld
+            ? '⌃ Hide completed over 30 days'
+            : `⌄ Show ${hiddenCount} completed over 30 days`
+        }</button>`
+      : '';
     return `<div class="col" data-ph="${esc(ph)}" draggable="true" ondragstart="colDragStart(event,'${esc(ph)}')" ondragend="colDragEnd(event)" ondragover="colDragOver(event)" ondragleave="colDragLeave(event)" ondrop="colDrop(event,'${esc(ph)}')">
       <div class="col-head">
         <div class="col-dot ${cc}"></div>
@@ -183,6 +215,7 @@ function renderBoard(){
       </div>
       <div class="col-body" id="col-${esc(ph)}">
         ${cardsHtml}
+        ${toggleHtml}
       </div>
       <button class="col-add-btn" onclick="openAddTask('${esc(ph)}')">+ Add Task</button>
     </div>`;

@@ -123,6 +123,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:14p
 .tcard[draggable]{cursor:grab;}
 .tcard.dragging{opacity:.4;transform:scale(.97);cursor:grabbing;}
 .col.col-task-over{background:rgba(74,222,128,0.08);transition:background .12s;}
+.col-old-toggle{background:none;border:1px dashed var(--border2);color:var(--text3);padding:8px 10px;border-radius:8px;font-family:inherit;font-size:12px;cursor:pointer;margin-top:4px;flex-shrink:0;transition:all .13s;}
+.col-old-toggle:hover{border-color:var(--accent);color:var(--accent);}
 .tc-row1{display:flex;align-items:flex-start;gap:6px;}
 .tc-row2,.tc-row3{display:flex;flex-wrap:wrap;gap:5px;align-items:center;}
 .tc-row3{opacity:.8;}
