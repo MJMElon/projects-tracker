@@ -867,6 +867,16 @@ function triggerSubUpload(taskId,idx){
 }
 
 const SS_BUCKET = 'vibetracker-screenshots';
+let _uploadsInFlight = 0;
+
+// Warn if user tries to navigate away during an in-flight upload.
+window.addEventListener('beforeunload', (e) => {
+  if(_uploadsInFlight > 0){
+    e.preventDefault();
+    e.returnValue = 'An image is still uploading. Leave anyway?';
+    return e.returnValue;
+  }
+});
 
 // Compress an image File to a JPEG Blob, scaled to max `maxDim` on the longest side.
 async function compressImage(file, maxDim = 1600, quality = 0.78){
@@ -938,16 +948,24 @@ document.getElementById('ssInput').addEventListener('change', async function(){
   render();
 
   // Phase 2: compress + upload in the background; swap blob URL for storage path.
-  for(const p of pending){
-    const path = await uploadScreenshot(projectId, p.file);
-    const idx = target.screenshots.indexOf(p.blobUrl);
-    if(idx >= 0){
-      if(path) target.screenshots[idx] = path;
-      else target.screenshots.splice(idx, 1); // upload failed
+  _uploadsInFlight++;
+  try {
+    for(const p of pending){
+      const path = await uploadScreenshot(projectId, p.file);
+      const idx = target.screenshots.indexOf(p.blobUrl);
+      if(idx >= 0){
+        if(path) target.screenshots[idx] = path;
+        else target.screenshots.splice(idx, 1); // upload failed
+      }
+      URL.revokeObjectURL(p.blobUrl);
     }
-    URL.revokeObjectURL(p.blobUrl);
+    // Persist immediately — don't leave a freshly-uploaded screenshot sitting
+    // in the debounce window where a refresh would orphan the storage file.
+    if(typeof flushSync === 'function') await flushSync();
+    else save();
+  } finally {
+    _uploadsInFlight--;
   }
-  save();
   if(_drawerId) renderDrawer();
   render();
 });

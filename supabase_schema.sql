@@ -353,6 +353,13 @@ on conflict (id) do update set
   allowed_mime_types = excluded.allowed_mime_types;
 
 -- Path convention: `{project_id}/{random-uuid}.jpg`
+-- SELECT policy is required for delete to work — Supabase's Storage API does
+-- an internal SELECT-then-DELETE, and without this the authenticated role's
+-- subquery returns 0 rows (even though the bucket is public for direct URL reads).
+drop policy if exists "vt_ss_select" on storage.objects;
+create policy "vt_ss_select" on storage.objects
+for select using (bucket_id = 'vibetracker-screenshots');
+
 drop policy if exists "vt_ss_insert" on storage.objects;
 create policy "vt_ss_insert" on storage.objects
 for insert to authenticated with check (

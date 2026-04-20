@@ -198,6 +198,12 @@ function queueSync(){
   clearTimeout(_syncTimer);
   _syncTimer = setTimeout(syncNow, 350);
 }
+// Bypass the debounce — run the sync right now. Use for user actions where
+// pending state must hit the DB before the next page load (e.g. uploads).
+async function flushSync(){
+  clearTimeout(_syncTimer);
+  await syncNow();
+}
 
 // ═══════════════════════════════════════════════
 // AUTH UI
