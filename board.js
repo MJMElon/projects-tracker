@@ -577,6 +577,18 @@ function handleCheck(id){
     if(!t.history) t.history=[];
     t.history.push({type:'completed',ts:now,elapsed:t.startedAt?now-t.startedAt:null,prevStart:t.startedAt||null});
     t.startedAt=null;
+    // Cascade: complete any ongoing subtasks. (Reopening the parent later
+    // does NOT reopen these — subtasks stay done.)
+    (t.subtasks||[]).forEach(s=>{
+      if(!s.done){
+        s.done=true; s.completedAt=now;
+        const started=s.startedAt||s.createdAt;
+        s.elapsed=(s.elapsed||0)+(started?now-started:0);
+        s.startedAt=null;
+        if(!s.history) s.history=[{type:'created',ts:s.createdAt||now}];
+        s.history.push({type:'completed',ts:now,elapsed:s.elapsed,reason:'parent task completed'});
+      }
+    });
     save(); render(); if(_drawerId===id) renderDrawer();
   } else {
     _reopenId=id;
