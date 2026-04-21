@@ -448,9 +448,9 @@ body.locked{overflow:hidden;}
   .tl-section{padding:10px 12px 0;}
   .tl-panel{max-height:50vh;}
 
-  .board{padding:12px;gap:12px;}
+  .board{padding:12px;gap:12px;scroll-snap-type:x mandatory;scroll-padding-left:12px;}
   :root{--col-w:280px;}
-  .col{border-radius:10px;}
+  .col{border-radius:10px;scroll-snap-align:start;scroll-snap-stop:always;}
 
   .modal-overlay{padding:12px;}
   .modal{width:100%;max-width:100%;padding:18px;}
