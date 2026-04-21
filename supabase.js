@@ -107,11 +107,27 @@ async function hydrate(){
   console.log('[hydrate] fetching get_my_projects');
   const { data: projects, error: pe } = await rpcFetch('get_my_projects');
   console.log('[hydrate] projects returned. count:', projects?.length, 'error:', pe?.message);
-  if(pe){ alert('Failed to load projects: '+pe.message); return; }
+  if(pe){
+    // Stale session (e.g., signed out on another device) — wipe local state and sign in fresh.
+    if(/jwt|token|expired|invalid|unauthor/i.test(pe.message || '')){
+      console.warn('[hydrate] session invalid, clearing and re-auth');
+      hardReset();
+      return;
+    }
+    alert('Failed to load projects: '+pe.message);
+    return;
+  }
   console.log('[hydrate] fetching get_my_tasks');
   const { data: tasks, error: te } = await rpcFetch('get_my_tasks');
   console.log('[hydrate] tasks returned. count:', tasks?.length, 'error:', te?.message);
-  if(te){ alert('Failed to load tasks: '+te.message); return; }
+  if(te){
+    if(/jwt|token|expired|invalid|unauthor/i.test(te.message || '')){
+      hardReset();
+      return;
+    }
+    alert('Failed to load tasks: '+te.message);
+    return;
+  }
 
   S.projects = (projects||[]).map(rowToProject);
   S.tasks = (tasks||[]).map(rowToTask);

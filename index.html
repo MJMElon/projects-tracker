@@ -3,10 +3,10 @@
 
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Vibe Tracker · MJM</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="board.css?v=51">
+<link rel="stylesheet" href="board.css?v=56">
 <link rel="icon" type="image/svg+xml" href="icon.svg">
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="manifest" href="manifest.webmanifest">
@@ -27,7 +27,15 @@
   <div class="logo">Vibe<span>Tracker</span></div>
   <div class="hactions">
     <div class="auth-bar" id="authBar"></div>
-    <button class="btn btn-ghost btn-sm" id="inviteBtn" onclick="openMembersModal()" title="Manage project members"><span class="btn-label-lg">👥 Members</span><span class="btn-label-sm">👥</span></button>
+    <button class="btn btn-ghost btn-sm" id="inviteBtn" onclick="openMembersModal()" title="Manage project members">
+      <svg class="hdr-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <circle cx="9" cy="8" r="3.5"/>
+        <path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6H3z"/>
+        <circle cx="17" cy="9" r="2.8"/>
+        <path d="M13 20c.4-2.4 1.8-4.4 3.7-5.5 2.2.2 4.3 1.9 4.3 5.5h-8z"/>
+      </svg>
+      <span class="btn-label-lg">Members</span>
+    </button>
     <button class="btn btn-ghost btn-sm" id="reportBtn"><span class="btn-label-lg">📊 Report</span><span class="btn-label-sm">📊</span></button>
   </div>
 </header>
@@ -168,7 +176,13 @@
   <div class="modal" style="max-width:520px">
     <span class="mhandle"></span>
     <div class="mtitle" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-      <span>👥 Members ·</span>
+      <svg viewBox="0 0 24 24" fill="currentColor" style="width:20px;height:20px;color:var(--text3);flex-shrink:0" aria-hidden="true">
+        <circle cx="9" cy="8" r="3.5"/>
+        <path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6H3z"/>
+        <circle cx="17" cy="9" r="2.8"/>
+        <path d="M13 20c.4-2.4 1.8-4.4 3.7-5.5 2.2.2 4.3 1.9 4.3 5.5h-8z"/>
+      </svg>
+      <span>Members ·</span>
       <span id="membersProjName" style="color:var(--accent)"></span>
       <button class="btn btn-ghost btn-sm" id="renameProjBtn" onclick="openRenameProjectModal()" title="Rename project" style="display:none;margin-left:auto">✏️ Rename</button>
     </div>
@@ -257,7 +271,7 @@
 <!-- hidden file input -->
 <input type="file" id="ssInput" accept="image/*" style="display:none" multiple />
 
-<script src="board.js?v=51"></script>
-<script src="supabase.js?v=51"></script>
+<script src="board.js?v=56"></script>
+<script src="supabase.js?v=56"></script>
 </body>
 </html>

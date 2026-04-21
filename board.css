@@ -25,7 +25,12 @@ body{
   display:flex;
   flex-direction:column;
   overflow:hidden;
+  -webkit-text-size-adjust:100%;
+  text-size-adjust:100%;
 }
+
+/* Prevent iOS auto-zoom on any form input (requires font-size >= 16px). */
+input, select, textarea, button { font-size: 16px; }
 
 /* ── HEADER ── */
 header{display:flex;align-items:center;justify-content:space-between;padding:14px 22px;border-bottom:1px solid var(--border);background:var(--surface2);flex-shrink:0;gap:12px;z-index:50;}
@@ -141,7 +146,9 @@ header{display:flex;align-items:center;justify-content:space-between;padding:14p
 .b-reopen{background:var(--orange-dim);color:var(--orange);border:1px solid rgba(251,146,60,.2);}
 .b-time{background:var(--accent-dim);color:var(--accent);border:1px solid rgba(74,222,128,.2);}
 .b-assign{background:var(--surface);color:var(--text2);border:1px solid var(--border);}
-.assign-wrap{display:inline-flex;align-items:center;gap:4px;}
+.assign-wrap{display:inline-flex;align-items:center;gap:4px;color:var(--text3);}
+.assign-icon{width:12px;height:12px;flex-shrink:0;}
+.hdr-icon{width:16px;height:16px;color:var(--text3);flex-shrink:0;vertical-align:middle;margin-right:4px;}
 /* Deployed subtask card in column */
 .tcard-sub{padding:8px 10px;gap:4px;border-style:dashed;}
 .tcard-sub.u-high{background:rgba(248,113,113,.06);border-color:rgba(248,113,113,.22);}

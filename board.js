@@ -92,6 +92,8 @@ function parseStartDate(s){
 function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 const COL_COLORS=['c0','c1','c2','c3','c4','c5','c6','c7','c8'];
+// Shared user icon — solid silhouette in currentColor (light grey via .assign-wrap)
+const USER_ICON_SVG = `<svg class="assign-icon" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8H4z"/></svg>`;
 function colColor(i){ return COL_COLORS[i%COL_COLORS.length]; }
 function urgencyLabel(u){ return u==='high'?'URGENT':u.toUpperCase(); }
 
@@ -265,7 +267,7 @@ function renderCard(t){
   const row3=r3.length?`<div class="tc-row3">${r3.join('')}</div>`:'';
 
   // Row 4: assignee
-  const row4=t.assignee?`<div class="tc-row4"><span class="assign-wrap">👤<span class="badge b-assign">@${esc(t.assignee)}</span></span></div>`:'';
+  const row4=t.assignee?`<div class="tc-row4"><span class="assign-wrap">${USER_ICON_SVG}<span class="badge b-assign">@${esc(t.assignee)}</span></span></div>`:'';
 
   const imgs=t.screenshots?.slice(0,2).map(s=>`<img class="tc-img" src="${shotUrl(s)}" />`).join('')||'';
 
@@ -285,7 +287,7 @@ function renderSubCard(t,s,idx){
   const r3=[];
   if(timeFmt) r3.push(`<span class="badge b-time">⏱ ${timeFmt}</span>`);
   if(subReopens.length) r3.push(`<span class="badge b-reopen">↩ ${subReopens.length}</span>`);
-  const subRow4=s.assignee?`<div class="tc-row4"><span class="assign-wrap">👤<span class="badge b-assign">@${esc(s.assignee)}</span></span></div>`:'';
+  const subRow4=s.assignee?`<div class="tc-row4"><span class="assign-wrap">${USER_ICON_SVG}<span class="badge b-assign">@${esc(s.assignee)}</span></span></div>`:'';
   return `<div class="tcard tcard-sub u-${t.urgency}" id="${subId}" draggable="true" ondragstart="dragStartSub(event,'${t.id}',${idx})" ondragend="dragEndSub(event)" onclick="openSubtaskDetail('${t.id}',${idx})">
     <div class="tc-tick ${s.done?'checked':''}" onclick="event.stopPropagation();toggleSubtask('${t.id}',${idx})"></div>
     <div class="tc-content">
@@ -342,7 +344,7 @@ function renderDrawer(){
   badges+=`<span class="badge b-${t.urgency}">${urgencyLabel(t.urgency)}</span>`;
   if(t.done) badges+=`<span class="badge b-done">✓ DONE</span>`;
   if(isReopened) badges+=`<span class="badge b-reopen">↩ REOPENED</span>`;
-  if(t.assignee) badges+=`<span class="assign-wrap">👤<span class="badge b-assign">@${esc(t.assignee)}</span></span>`;
+  if(t.assignee) badges+=`<span class="assign-wrap">${USER_ICON_SVG}<span class="badge b-assign">@${esc(t.assignee)}</span></span>`;
   if(t.startDate) badges+=`<span class="badge b-meta">▶ ${fmtDate(t.startDate)}</span>`;
   if(t.due) badges+=`<span class="badge ${isOverdue(t)?'b-overdue':'b-meta'}">⏹ ${fmtDate(t.due)}${isOverdue(t)?' ⚠':''}</span>`;
   if(timeFmt) badges+=`<span class="badge b-time">⏱ ${timeFmt}</span>`;
@@ -384,7 +386,7 @@ function renderDrawer(){
           ${s.phase&&!s.done?`<div class="st-phase">📌 Deployed to ${esc(s.phase)}</div>`:''}
         </div>
         ${stReopens?`<div class="st-reopen">↩ ${stReopens}</div>`:''}
-        ${s.assignee?`<span class="assign-wrap">👤<span class="st-assign">@${esc(s.assignee)}</span></span>`:''}
+        ${s.assignee?`<span class="assign-wrap">${USER_ICON_SVG}<span class="st-assign">@${esc(s.assignee)}</span></span>`:''}
         ${subTimeFmt?`<div class="st-time">⏱ ${subTimeFmt}</div>`:''}
         <button class="st-del" onclick="event.stopPropagation();deleteSubtask('${t.id}',${i})">✕</button>
       </div>`;
@@ -481,7 +483,7 @@ function renderSubtaskDrawer(){
   if(s.done) badges+=`<span class="badge b-done">✓ DONE</span>`;
   if(s.phase&&!s.done) badges+=`<span class="badge b-meta">📌 ${esc(s.phase)}</span>`;
   if(timeFmt) badges+=`<span class="badge b-time">⏱ ${timeFmt}</span>`;
-  if(s.assignee) badges+=`<span class="assign-wrap">👤<span class="badge b-assign">@${esc(s.assignee)}</span></span>`;
+  if(s.assignee) badges+=`<span class="assign-wrap">${USER_ICON_SVG}<span class="badge b-assign">@${esc(s.assignee)}</span></span>`;
   if(drawerReopens.length) badges+=`<span class="badge b-reopen">↩ ${drawerReopens.length}x reopened</span>`;
   if(badges) body+=`<div class="d-section"><div class="d-badges">${badges}</div></div>`;
 
