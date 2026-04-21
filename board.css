@@ -271,7 +271,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:14p
 .mtitle{font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:19px;margin-bottom:20px;}
 .field{margin-bottom:14px;}
 .field label{display:block;font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px;}
-.field input,.field select,.field textarea{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px 14px;font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;outline:none;transition:border-color .15s;-webkit-appearance:none;appearance:none;}
+.field input,.field select,.field textarea{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px 14px;font-family:'Plus Jakarta Sans',sans-serif;font-size:16px;outline:none;transition:border-color .15s;-webkit-appearance:none;appearance:none;}
 .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--accent);}
 .field textarea{resize:vertical;min-height:75px;}
 .field select option{background:var(--surface2);}
