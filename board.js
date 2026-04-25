@@ -267,7 +267,7 @@ function renderCard(t){
   const row3=r3.length?`<div class="tc-row3">${r3.join('')}</div>`:'';
 
   // Row 4: assignee
-  const row4=t.assignee?`<div class="tc-row4"><span class="assign-wrap">${USER_ICON_SVG}<span class="badge b-assign">@${esc(t.assignee)}</span></span></div>`:'';
+  const row4=`<div class="tc-row4"><span class="assign-wrap" onclick="event.stopPropagation();openAssignPicker(event,'task','${t.id}')" title="Click to reassign">${USER_ICON_SVG}<span class="badge b-assign">${t.assignee?'@'+esc(t.assignee):'Unassigned'}</span></span></div>`;
 
   const imgs=t.screenshots?.slice(0,2).map(s=>`<img class="tc-img" src="${shotUrl(s)}" />`).join('')||'';
 
@@ -287,7 +287,7 @@ function renderSubCard(t,s,idx){
   const r3=[];
   if(timeFmt) r3.push(`<span class="badge b-time">⏱ ${timeFmt}</span>`);
   if(subReopens.length) r3.push(`<span class="badge b-reopen">↩ ${subReopens.length}</span>`);
-  const subRow4=s.assignee?`<div class="tc-row4"><span class="assign-wrap">${USER_ICON_SVG}<span class="badge b-assign">@${esc(s.assignee)}</span></span></div>`:'';
+  const subRow4=`<div class="tc-row4"><span class="assign-wrap" onclick="event.stopPropagation();openAssignPicker(event,'sub','${t.id}:${idx}')" title="Click to reassign">${USER_ICON_SVG}<span class="badge b-assign">${s.assignee?'@'+esc(s.assignee):'Unassigned'}</span></span></div>`;
   return `<div class="tcard tcard-sub u-${t.urgency}" id="${subId}" draggable="true" ondragstart="dragStartSub(event,'${t.id}',${idx})" ondragend="dragEndSub(event)" onclick="openSubtaskDetail('${t.id}',${idx})">
     <div class="tc-tick ${s.done?'checked':''}" onclick="event.stopPropagation();toggleSubtask('${t.id}',${idx})"></div>
     <div class="tc-content">
@@ -355,16 +355,22 @@ function renderDrawer(){
   body+=`<div class="d-section"><div class="d-section-label">Description</div>
     <div class="d-desc ${t.desc?'':'empty'}">${t.desc?esc(t.desc):'No description added.'}</div></div>`;
 
-  // Completion date (editable only when done)
-  if(t.done){
-    body+=`<div class="d-section"><div class="d-section-label">Completed</div>
-      <div class="sub-dates-row">
-        <div class="sub-date-field"><label>Date</label>
-          <input type="date" id="fCompletedAt_${t.id}" value="${tsToDateInput(t.completedAt)}" onchange="saveTaskCompletedAt('${t.id}')" />
-        </div>
+  // Timeline — Start + Completed in row 1 (matches subtask layout); Due Date on its own row.
+  body+=`<div class="d-section"><div class="d-section-label">Timeline</div>
+    <div class="sub-dates-row">
+      <div class="sub-date-field"><label>Start Date</label>
+        <input type="date" id="fTaskStart_${t.id}" value="${t.startDate?t.startDate.slice(0,10):''}" onchange="saveTaskDates('${t.id}')" />
       </div>
-    </div>`;
-  }
+      ${t.done?`<div class="sub-date-field"><label>Completed</label>
+        <input type="date" id="fCompletedAt_${t.id}" value="${tsToDateInput(t.completedAt)}" onchange="saveTaskCompletedAt('${t.id}')" />
+      </div>`:''}
+    </div>
+    <div class="sub-dates-row" style="margin-top:8px">
+      <div class="sub-date-field"><label>Due Date</label>
+        <input type="date" id="fTaskDue_${t.id}" value="${t.due||''}" onchange="saveTaskDates('${t.id}')" />
+      </div>
+    </div>
+  </div>`;
 
   // Subtasks
   const subs=t.subtasks||[];
@@ -439,6 +445,14 @@ function deleteFromDrawer(id){
   if(t) removePathsFromStorage(collectTaskPaths(t));
   S.tasks=S.tasks.filter(t=>t.id!==id); save(); closeDrawer(); render();
 }
+function saveTaskDates(taskId){
+  const t=S.tasks.find(t=>t.id===taskId); if(!t) return;
+  const start=document.getElementById('fTaskStart_'+taskId);
+  const due=document.getElementById('fTaskDue_'+taskId);
+  if(start) t.startDate = start.value || '';
+  if(due) t.due = due.value || '';
+  save(); render();
+}
 function saveTaskCompletedAt(taskId){
   const t=S.tasks.find(t=>t.id===taskId); if(!t||!t.done) return;
   const inp=document.getElementById('fCompletedAt_'+taskId);
@@ -475,7 +489,7 @@ function renderSubtaskDrawer(){
   let body='';
   body+=`<div class="sub-detail-header">
     <div class="drawer-check ${s.done?'checked':''}" onclick="toggleSubtask('${t.id}',${_drawerSubIdx})"></div>
-    <div class="drawer-title ${s.done?'done':''}" style="${s.done?'text-decoration:line-through;opacity:.6':''}">${esc(s.title)}</div>
+    <input class="drawer-title-input ${s.done?'done':''}" id="subTitleInput_${s.id}" value="${esc(s.title)}" onblur="saveSubtaskTitle('${t.id}',${_drawerSubIdx})" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" />
   </div>`;
 
   const drawerReopens=(s.history||[]).filter(h=>h.type==='reopened');
@@ -541,6 +555,17 @@ let _subDescTimer=null;
 function debounceSaveSubDesc(taskId,idx){
   clearTimeout(_subDescTimer);
   _subDescTimer=setTimeout(()=>saveSubtaskDesc(taskId,idx),500);
+}
+function saveSubtaskTitle(taskId,idx){
+  const t=S.tasks.find(t=>t.id===taskId); if(!t||!t.subtasks) return;
+  const s=t.subtasks[idx]; if(!s) return;
+  const inp=document.getElementById('subTitleInput_'+s.id);
+  if(!inp) return;
+  const newTitle=inp.value.trim();
+  if(!newTitle){ inp.value = s.title; return; } // ignore empty, restore
+  if(newTitle === s.title) return;
+  s.title = newTitle;
+  save(); render();
 }
 function saveSubtaskDesc(taskId,idx){
   const t=S.tasks.find(t=>t.id===taskId); if(!t||!t.subtasks) return;
@@ -658,6 +683,49 @@ function closeReopenModal(){ document.getElementById('reopenModal').classList.re
 // TASK MODAL
 // ═══════════════════════════════════════════════
 let _editId=null;
+
+// ── ASSIGNEE QUICK PICKER (click @name on a card to reassign) ──
+function openAssignPicker(e, kind, ref){
+  e.stopPropagation();
+  closeAssignPicker();
+  const pop = document.getElementById('assignPop'); if(!pop) return;
+  const members = (typeof _membersByProject !== 'undefined' && _membersByProject[S.activeProject]) || [];
+  const names = members.map(m => m.display_name);
+  const cur = (kind === 'task')
+    ? (S.tasks.find(t => t.id === ref)?.assignee || '')
+    : (() => {
+        const [tid, ix] = ref.split(':');
+        const t = S.tasks.find(t => t.id === tid);
+        return t?.subtasks?.[+ix]?.assignee || '';
+      })();
+  const items = [
+    `<div class="assign-pop-item ${!cur?'active':''}" onclick="pickAssignee('${kind}','${ref}','')">— Unassigned —</div>`,
+    ...names.map(n => `<div class="assign-pop-item ${n===cur?'active':''}" onclick="pickAssignee('${kind}','${ref}','${esc(n).replace(/'/g,"\\'")}')">${esc(n)}</div>`)
+  ];
+  pop.innerHTML = items.join('');
+  pop.classList.add('open');
+  // Position near the click
+  const x = Math.min(e.clientX, innerWidth - 200);
+  const y = Math.min(e.clientY + 8, innerHeight - pop.offsetHeight - 12);
+  pop.style.left = x + 'px';
+  pop.style.top = y + 'px';
+}
+function closeAssignPicker(){
+  const pop = document.getElementById('assignPop');
+  if(pop) pop.classList.remove('open');
+}
+function pickAssignee(kind, ref, name){
+  if(kind === 'task'){
+    const t = S.tasks.find(t => t.id === ref);
+    if(t){ t.assignee = name; save(); render(); if(_drawerId === t.id) renderDrawer(); }
+  } else {
+    const [tid, ix] = ref.split(':');
+    const t = S.tasks.find(t => t.id === tid);
+    if(t?.subtasks?.[+ix]){ t.subtasks[+ix].assignee = name; save(); render(); if(_drawerId === tid) renderDrawer(); }
+  }
+  closeAssignPicker();
+}
+document.addEventListener('click', e => { if(!e.target.closest('#assignPop') && !e.target.closest('.assign-wrap')) closeAssignPicker(); });
 
 // Build <option> list of project members for the assignee dropdown.
 // Returns HTML string. `selected` is the currently-assigned name (may be legacy text).

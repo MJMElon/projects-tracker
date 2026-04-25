@@ -148,6 +148,15 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .b-assign{background:var(--surface);color:var(--text2);border:1px solid var(--border);}
 .assign-wrap{display:inline-flex;align-items:center;gap:4px;color:var(--text3);}
 .assign-icon{width:12px;height:12px;flex-shrink:0;}
+.assign-wrap{cursor:pointer;}
+.assign-wrap:hover .b-assign{border-color:var(--accent);color:var(--accent);}
+
+/* ── ASSIGNEE QUICK PICKER POPUP ── */
+.assign-pop{position:fixed;display:none;flex-direction:column;background:var(--surface);border:1px solid var(--border2);border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.55);z-index:160;min-width:180px;max-height:240px;overflow-y:auto;padding:6px;}
+.assign-pop.open{display:flex;}
+.assign-pop-item{padding:8px 12px;font-size:13px;color:var(--text2);border-radius:6px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.assign-pop-item:hover{background:var(--surface3);color:var(--text);}
+.assign-pop-item.active{background:var(--accent-dim);color:var(--accent);font-weight:600;}
 .hdr-icon{width:16px;height:16px;color:var(--text3);flex-shrink:0;vertical-align:middle;margin-right:4px;}
 /* Deployed subtask card in column */
 .tcard-sub{padding:8px 10px;gap:4px;border-style:dashed;}
@@ -191,6 +200,10 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .drawer-check.checked::after{content:'✓';color:#0d0f12;font-size:14px;font-weight:700;}
 .drawer-title-wrap{flex:1;}
 .drawer-title{font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:18px;line-height:1.4;color:var(--text);}
+.drawer-title-input{flex:1;font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:18px;line-height:1.4;color:var(--text);background:transparent;border:1px solid transparent;border-radius:6px;padding:4px 8px;margin-left:-8px;outline:none;width:100%;transition:border-color .12s,background .12s;}
+.drawer-title-input:hover{background:var(--surface2);}
+.drawer-title-input:focus{background:var(--surface2);border-color:var(--accent);}
+.drawer-title-input.done{text-decoration:line-through;opacity:.6;}
 .drawer-phase{font-size:12px;color:var(--text3);margin-top:4px;}
 .drawer-close{background:none;border:none;color:var(--text3);cursor:pointer;font-size:20px;padding:4px;border-radius:6px;transition:all .12s;line-height:1;}
 .drawer-close:hover{color:var(--text);background:var(--surface2);}
