@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Vibe Tracker · MJM</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="board.css?v=83">
+<link rel="stylesheet" href="board.css?v=84">
 <link rel="icon" type="image/svg+xml" href="icon.svg">
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="manifest" href="manifest.webmanifest">
@@ -155,6 +155,22 @@
     <div class="mactions">
       <button class="btn btn-ghost" onclick="closeRenameCol()">Cancel</button>
       <button class="btn btn-primary" onclick="saveRenameCol()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- RESET PASSWORD (after password-recovery link click) -->
+<div class="auth-overlay" id="resetOverlay">
+  <div class="auth-card">
+    <div class="auth-logo">Vibe<span>Tracker</span></div>
+    <div class="auth-sub">Set a new password</div>
+    <div class="field">
+      <label>New password</label>
+      <input type="password" id="resetPassword" placeholder="At least 6 characters" autocomplete="new-password" />
+    </div>
+    <div id="resetMsg" style="font-size:13px;min-height:18px;margin:4px 0 10px"></div>
+    <div class="auth-actions">
+      <button class="btn btn-primary" onclick="completePasswordReset()" style="flex:1">Update password</button>
     </div>
   </div>
 </div>
@@ -331,7 +347,7 @@
 <!-- hidden file input -->
 <input type="file" id="ssInput" accept="image/*" style="display:none" multiple />
 
-<script src="board.js?v=83"></script>
-<script src="supabase.js?v=83"></script>
+<script src="board.js?v=84"></script>
+<script src="supabase.js?v=84"></script>
 </body>
 </html>

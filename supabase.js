@@ -680,8 +680,9 @@ async function refreshTokenSafe(refreshToken){
   } catch(e){ console.warn('[refresh] failed', e); return null; }
 }
 
-// Capture URL hash early in case it's an invite redirect.
+// Capture URL hash early in case it's an invite or password-recovery redirect.
 const _inviteHashOnLoad = (typeof window !== 'undefined' && /type=invite/i.test(window.location.hash || '')) ? window.location.hash : null;
+const _recoveryHashOnLoad = (typeof window !== 'undefined' && /type=recovery/i.test(window.location.hash || '')) ? window.location.hash : null;
 
 // True if the signed-in user was invited and hasn't completed setup yet.
 function needsInviteSetup(user){
@@ -733,6 +734,13 @@ async function boot(){
     _user = stored?.user || null;
     renderAuthBar();
     if(!_user){ console.log('[boot] no user → showAuth'); showAuth(); return; }
+    // Password recovery flow → show "set new password" overlay before app loads.
+    if(_recoveryHashOnLoad){
+      console.log('[boot] recovery flow');
+      try { history.replaceState(null, '', window.location.pathname + window.location.search); } catch(e){}
+      showResetPassword();
+      return;
+    }
     // Invited user who hasn't set a display name → run them through the
     // "complete your account" flow before letting them into the app.
     if(needsInviteSetup(_user)){
@@ -771,6 +779,36 @@ async function boot(){
     console.error('[boot] failed', e);
     alert('Failed to start: '+(e.message||e));
     showAuth();
+  }
+}
+
+// ── RESET PASSWORD (after password recovery link click) ────────
+function showResetPassword(){
+  document.getElementById('resetPassword').value = '';
+  document.getElementById('resetMsg').textContent = '';
+  document.getElementById('authOverlay').classList.remove('open');
+  document.getElementById('setupOverlay').classList.remove('open');
+  document.getElementById('resetOverlay').classList.add('open');
+  document.querySelector('body').classList.add('locked');
+  setTimeout(()=>document.getElementById('resetPassword').focus(), 200);
+}
+async function completePasswordReset(){
+  const password = document.getElementById('resetPassword').value;
+  const msg = document.getElementById('resetMsg');
+  if(!password || password.length < 6){ msg.style.color='var(--red)'; msg.textContent='At least 6 characters'; return; }
+  msg.style.color='var(--text2)'; msg.textContent='Saving…';
+  const { data, error } = await sb.auth.updateUser({ password });
+  if(error){ msg.style.color='var(--red)'; msg.textContent=error.message; return; }
+  _user = data.user;
+  document.getElementById('resetOverlay').classList.remove('open');
+  document.querySelector('body').classList.remove('locked');
+  renderAuthBar();
+  if(!_lastHydratedUid){
+    await hydrate();
+    render();
+    if(S.activeProject) fetchMembers(S.activeProject);
+    subscribeRealtime();
+    _lastHydratedUid = _user?.id;
   }
 }
 
@@ -822,6 +860,10 @@ let _lastHydratedUid = null;
 sb.auth.onAuthStateChange(async (event, session) => {
   _user = session?.user || null;
   renderAuthBar();
+  if(event === 'PASSWORD_RECOVERY'){
+    showResetPassword();
+    return;
+  }
   if(event === 'SIGNED_IN'){
     // Skip re-hydrating if boot() already hydrated this same user on load.
     if(_lastHydratedUid === _user?.id) return;
