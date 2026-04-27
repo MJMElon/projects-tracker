@@ -355,15 +355,13 @@ create table if not exists project_tracker.pending_invites (
 );
 create index if not exists pending_invites_email_idx on project_tracker.pending_invites(lower(email));
 
--- When a user signs in for the first time (last_sign_in_at gets set), auto-add
--- them to any project they had pending invites for. Gating on last_sign_in_at
--- (rather than email_confirmed_at) means invited users only appear in members
--- lists after they actually accept the invite, regardless of whether the
--- Supabase project has email confirmation enabled.
+-- Auto-join users to projects they had pending invites for, ONLY once they've
+-- both signed in AND set a password. Gating on both means an invitee who clicks
+-- the magic link doesn't appear in members until they finish setup.
 create or replace function project_tracker.process_pending_invites()
 returns trigger language plpgsql security definer set search_path = project_tracker, public, auth as $$
 begin
-  if new.last_sign_in_at is null then return new; end if;
+  if new.last_sign_in_at is null or new.encrypted_password is null then return new; end if;
   insert into project_tracker.project_members (project_id, user_id, role)
   select pi.project_id, new.id, pi.role
   from project_tracker.pending_invites pi
@@ -377,7 +375,7 @@ drop trigger if exists pending_invites_trigger on auth.users;
 drop trigger if exists pending_invites_trigger_insert on auth.users;
 drop trigger if exists pending_invites_trigger_update on auth.users;
 create trigger pending_invites_trigger_update
-after update of last_sign_in_at on auth.users
+after update of encrypted_password, last_sign_in_at on auth.users
 for each row execute function project_tracker.process_pending_invites();
 
 -- ── debug: what does Postgres see when a request comes in? ──
