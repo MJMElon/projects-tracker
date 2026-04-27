@@ -734,10 +734,10 @@ async function boot(){
       }
     }
 
-    // For recovery flows over PKCE, supabase-js may still be exchanging the
-    // code → wait briefly for it to set the session.
-    if(_recoveryHashOnLoad && !stored){
-      console.log('[boot] waiting for recovery session...');
+    // For recovery / invite flows over PKCE, supabase-js may still be
+    // exchanging the code → wait briefly for it to set the session.
+    if((_recoveryHashOnLoad || _inviteHashOnLoad) && !stored){
+      console.log('[boot] waiting for auth-link session...');
       for(let i = 0; i < 6 && !stored; i++){
         await new Promise(r => setTimeout(r, 250));
         stored = readStoredSession();
@@ -752,11 +752,23 @@ async function boot(){
       showResetPassword();
       return;
     }
+    // Came in through an invite link → force the setup overlay so the user
+    // sets a password (and a display name) before entering the app. Bypass
+    // only if they've already set a display name (returning user).
+    if(_inviteHashOnLoad && _user){
+      const m = _user.user_metadata || {};
+      if(!(m.full_name || m.name)){
+        console.log('[boot] invite link → setup overlay');
+        try { history.replaceState(null, '', window.location.pathname); } catch(e){}
+        showInviteSetup(_user.email);
+        return;
+      }
+    }
     if(!_user){ console.log('[boot] no user → showAuth'); showAuth(); return; }
-    // Invited user who hasn't set a display name → run them through the
-    // "complete your account" flow before letting them into the app.
+    // Fallback: metadata flag set by the Edge Function (in case the URL hash
+    // got consumed before our detection caught it).
     if(needsInviteSetup(_user)){
-      console.log('[boot] invite setup needed');
+      console.log('[boot] invite setup needed (metadata)');
       showInviteSetup(_user.email);
       return;
     }
