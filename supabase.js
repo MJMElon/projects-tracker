@@ -231,6 +231,20 @@ function showAuth(){
   const form = document.getElementById('authCardForm');
   if(loading) loading.style.display = 'none';
   if(form) form.style.display = '';
+  // If the URL carries an invite_email param, pre-fill + lock the email and
+  // switch the form to sign-up mode so the recipient can finish creating
+  // their account in one step.
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const inviteEmail = params.get('invite_email');
+    if(inviteEmail){
+      const e = document.getElementById('authEmail');
+      if(e){ e.value = inviteEmail; e.readOnly = true; e.style.opacity = '0.7'; }
+      if(_authMode !== 'signup' && typeof toggleAuthMode === 'function') toggleAuthMode();
+      const sub = document.querySelector('#authCardForm .auth-sub');
+      if(sub) sub.textContent = 'Create your account to join the project';
+    }
+  } catch(e){}
 }
 function hideAuth(){
   document.getElementById('authOverlay').classList.remove('open');
@@ -509,8 +523,7 @@ async function submitInvite(){
     return;
   }
 
-  // 2) Fallback — call the RPC which handles existing users + records pending_invites.
-  //    Then show the copy-paste modal so the inviter can send the link manually.
+  // 2) Fallback — call the RPC and show the manual share modal.
   const { data, error } = await rpcFetch('invite_member', { pid: proj.id, email_in: email });
   if(error){ msgEl.style.color='var(--red)'; msgEl.textContent=error.message; return; }
   if(data && data.ok === false){ msgEl.style.color='var(--red)'; msgEl.textContent=data.error || 'Invite failed'; return; }
@@ -519,9 +532,7 @@ async function submitInvite(){
   renderMembersList();
   if(data?.status === 'pending'){
     msgEl.style.color='var(--accent)';
-    msgEl.textContent = edgeBody?.error
-      ? 'Auto-email failed; share manually:'
-      : 'Invite saved (function not deployed — share manually):';
+    msgEl.textContent = edgeBody?.error ? 'Auto-email failed; share manually:' : 'Invite saved — share manually:';
     showInvitePendingModal(email, proj.name);
   } else {
     msgEl.style.color='var(--accent)';
@@ -534,7 +545,9 @@ let _pendingInviteEmail = '';
 let _pendingInviteSubject = '';
 let _pendingInviteBody = '';
 function showInvitePendingModal(email, projectName){
-  const appUrl = window.location.origin + window.location.pathname;
+  const baseUrl = window.location.origin + window.location.pathname;
+  // Pre-fill email + (informational) project on the signup form via query params
+  const inviteUrl = `${baseUrl}?invite_email=${encodeURIComponent(email)}`;
   const inviterName = (typeof getMyDisplayName === 'function') ? getMyDisplayName() : '';
   const subject = `You're invited to "${projectName}" on VibeTracker`;
   const body = [
@@ -542,8 +555,8 @@ function showInvitePendingModal(email, projectName){
     ``,
     `${inviterName ? inviterName : 'I'} invited you to join the project "${projectName}" on VibeTracker.`,
     ``,
-    `Sign up using this email address (${email}) and you'll automatically join:`,
-    appUrl,
+    `Click this link to sign up — your email will be pre-filled and you'll auto-join the project:`,
+    inviteUrl,
     ``,
     `— VibeTracker`
   ].join('\n');
