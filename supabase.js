@@ -479,6 +479,38 @@ async function submitInvite(){
   const msgEl = document.getElementById('inviteMsg');
   if(!email){ msgEl.style.color='var(--red)'; msgEl.textContent='Email required'; return; }
   msgEl.style.color='var(--text2)'; msgEl.textContent='Inviting…';
+
+  // 1) Try the Edge Function — it sends a real Supabase invite email when needed.
+  const stored = (typeof readStoredSession === 'function') ? readStoredSession() : null;
+  const token = stored?.access_token;
+  let edgeOk = false, edgeBody = null;
+  try {
+    const resp = await fetch(`${SUPABASE_URL}/functions/v1/invite-user`, {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + token,
+        'apikey': SUPABASE_ANON_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ email, project_id: proj.id, role: 'member' })
+    });
+    edgeBody = await resp.json().catch(() => null);
+    edgeOk = resp.ok && edgeBody?.ok === true;
+  } catch(e){ /* function not deployed or network — fall through to RPC fallback */ }
+
+  if(edgeOk){
+    msgEl.style.color='var(--accent)';
+    msgEl.textContent = edgeBody.status === 'emailed'
+      ? 'Invite email sent. They\'ll join the project after signing up.'
+      : 'Added.';
+    document.getElementById('inviteEmail').value = '';
+    await fetchMembers(proj.id);
+    renderMembersList();
+    return;
+  }
+
+  // 2) Fallback — call the RPC which handles existing users + records pending_invites.
+  //    Then show the copy-paste modal so the inviter can send the link manually.
   const { data, error } = await rpcFetch('invite_member', { pid: proj.id, email_in: email });
   if(error){ msgEl.style.color='var(--red)'; msgEl.textContent=error.message; return; }
   if(data && data.ok === false){ msgEl.style.color='var(--red)'; msgEl.textContent=data.error || 'Invite failed'; return; }
@@ -486,28 +518,61 @@ async function submitInvite(){
   await fetchMembers(proj.id);
   renderMembersList();
   if(data?.status === 'pending'){
-    // No account yet — open inviter's email client with a prefilled signup invite.
     msgEl.style.color='var(--accent)';
-    msgEl.textContent='Invite saved — opening your email to send the signup link.';
-    const appUrl = window.location.origin + window.location.pathname;
-    const inviterName = (typeof getMyDisplayName === 'function') ? getMyDisplayName() : '';
-    const subject = encodeURIComponent(`You're invited to "${proj.name}" on VibeTracker`);
-    const lines = [
-      `Hi,`,
-      ``,
-      `${inviterName ? inviterName + ' has' : 'You\'ve been'} invited you to join the project "${proj.name}" on VibeTracker.`,
-      ``,
-      `Sign up here using this email address (${email}) and you'll automatically join the project:`,
-      appUrl,
-      ``,
-      `— VibeTracker`
-    ];
-    const body = encodeURIComponent(lines.join('\n'));
-    window.location.href = `mailto:${encodeURIComponent(email)}?subject=${subject}&body=${body}`;
+    msgEl.textContent = edgeBody?.error
+      ? 'Auto-email failed; share manually:'
+      : 'Invite saved (function not deployed — share manually):';
+    showInvitePendingModal(email, proj.name);
   } else {
     msgEl.style.color='var(--accent)';
     msgEl.textContent='Added.';
   }
+}
+
+// ── Pending-invite share modal ──────────────────────────────
+let _pendingInviteEmail = '';
+let _pendingInviteSubject = '';
+let _pendingInviteBody = '';
+function showInvitePendingModal(email, projectName){
+  const appUrl = window.location.origin + window.location.pathname;
+  const inviterName = (typeof getMyDisplayName === 'function') ? getMyDisplayName() : '';
+  const subject = `You're invited to "${projectName}" on VibeTracker`;
+  const body = [
+    `Hi,`,
+    ``,
+    `${inviterName ? inviterName : 'I'} invited you to join the project "${projectName}" on VibeTracker.`,
+    ``,
+    `Sign up using this email address (${email}) and you'll automatically join:`,
+    appUrl,
+    ``,
+    `— VibeTracker`
+  ].join('\n');
+  _pendingInviteEmail = email;
+  _pendingInviteSubject = subject;
+  _pendingInviteBody = body;
+  document.getElementById('invitePendingEmail').textContent = email;
+  document.getElementById('invitePendingText').value = body;
+  document.getElementById('invitePendingMsg').textContent = '';
+  document.getElementById('invitePendingModal').classList.add('open');
+}
+function closeInvitePendingModal(){
+  document.getElementById('invitePendingModal').classList.remove('open');
+}
+async function copyInviteText(){
+  const txt = document.getElementById('invitePendingText').value;
+  try {
+    await navigator.clipboard.writeText(txt);
+    document.getElementById('invitePendingMsg').textContent = '✓ Copied.';
+  } catch(e){
+    // Fallback: select the textarea so user can ⌘/Ctrl+C
+    const ta = document.getElementById('invitePendingText');
+    ta.focus(); ta.select();
+    document.getElementById('invitePendingMsg').textContent = 'Press ⌘/Ctrl+C to copy.';
+  }
+}
+function openInviteEmailClient(){
+  const url = `mailto:${encodeURIComponent(_pendingInviteEmail)}?subject=${encodeURIComponent(_pendingInviteSubject)}&body=${encodeURIComponent(_pendingInviteBody)}`;
+  window.open(url, '_blank');
 }
 
 async function changeMemberRole(userId, newRole){
