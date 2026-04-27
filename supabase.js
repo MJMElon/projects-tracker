@@ -680,30 +680,34 @@ async function refreshTokenSafe(refreshToken){
   } catch(e){ console.warn('[refresh] failed', e); return null; }
 }
 
-// Detect Supabase invite link before supabase-js consumes the URL hash.
+// Capture URL hash early in case it's an invite redirect.
 const _inviteHashOnLoad = (typeof window !== 'undefined' && /type=invite/i.test(window.location.hash || '')) ? window.location.hash : null;
+
+// True if the signed-in user was invited and hasn't completed setup yet.
+function needsInviteSetup(user){
+  if(!user) return false;
+  const m = user.user_metadata || {};
+  // Marker we set in the Edge Function. We only consider it "incomplete"
+  // if they haven't filled in a display name yet.
+  const wasInvited = !!m.invited_to_project || !!m.invited;
+  const hasName = !!(m.full_name || m.name);
+  return wasInvited && !hasName;
+}
 
 async function boot(){
   console.log('[boot] start');
   try {
-    // If the user just clicked a Supabase invite email link, route them to
-    // the "set your password" overlay before normal hydration.
-    if(_inviteHashOnLoad){
-      console.log('[boot] invite flow detected');
-      // Wait briefly for supabase-js to consume the hash and set the session.
-      await new Promise(r => setTimeout(r, 250));
-      const stored = readStoredSession();
-      _user = stored?.user || null;
-      if(_user){
-        showInviteSetup(_user.email);
-        // Clean URL so a refresh doesn't re-trigger this flow.
-        try { history.replaceState(null, '', window.location.pathname + window.location.search); } catch(e){}
-        return;
-      }
-    }
     // 1) Read stored session instantly (no network call, no locks).
     let stored = readStoredSession();
     console.log('[boot] stored session:', !!stored, 'expires_at:', stored?.expires_at);
+
+    // If the URL hash signals an invite, give supabase-js a moment to set
+    // the session before we read storage.
+    if(_inviteHashOnLoad && !stored){
+      await new Promise(r => setTimeout(r, 300));
+      stored = readStoredSession();
+      try { history.replaceState(null, '', window.location.pathname + window.location.search); } catch(e){}
+    }
 
     // 2) If expired or near expiry, refresh manually; overwrite localStorage so
     //    supabase-js picks up the new token on its next API call.
@@ -729,6 +733,13 @@ async function boot(){
     _user = stored?.user || null;
     renderAuthBar();
     if(!_user){ console.log('[boot] no user → showAuth'); showAuth(); return; }
+    // Invited user who hasn't set a display name → run them through the
+    // "complete your account" flow before letting them into the app.
+    if(needsInviteSetup(_user)){
+      console.log('[boot] invite setup needed');
+      showInviteSetup(_user.email);
+      return;
+    }
     hideAuth();
     // Tell supabase-js about our session so its SDK calls (storage, realtime)
     // include the JWT. Raced with a 4s timeout in case it hangs.

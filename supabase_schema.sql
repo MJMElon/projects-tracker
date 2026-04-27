@@ -355,10 +355,15 @@ create table if not exists project_tracker.pending_invites (
 );
 create index if not exists pending_invites_email_idx on project_tracker.pending_invites(lower(email));
 
--- When a new user signs up, auto-add them to any project they had pending invites for.
+-- When a user finishes signup (email_confirmed_at gets set), auto-add them
+-- to any project they had pending invites for. We gate on confirmation so
+-- invited users don't appear in members lists before they click the email.
 create or replace function project_tracker.process_pending_invites()
 returns trigger language plpgsql security definer set search_path = project_tracker, public, auth as $$
 begin
+  if new.email_confirmed_at is null then
+    return new;
+  end if;
   insert into project_tracker.project_members (project_id, user_id, role)
   select pi.project_id, new.id, pi.role
   from project_tracker.pending_invites pi
@@ -369,9 +374,15 @@ begin
   return new;
 end; $$;
 
+-- Drop legacy single trigger and create both INSERT + UPDATE versions.
 drop trigger if exists pending_invites_trigger on auth.users;
-create trigger pending_invites_trigger
+drop trigger if exists pending_invites_trigger_insert on auth.users;
+drop trigger if exists pending_invites_trigger_update on auth.users;
+create trigger pending_invites_trigger_insert
 after insert on auth.users
+for each row execute function project_tracker.process_pending_invites();
+create trigger pending_invites_trigger_update
+after update of email_confirmed_at on auth.users
 for each row execute function project_tracker.process_pending_invites();
 
 -- ── debug: what does Postgres see when a request comes in? ──
