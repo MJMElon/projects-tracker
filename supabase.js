@@ -479,10 +479,32 @@ async function submitInvite(){
   const msgEl = document.getElementById('inviteMsg');
   if(!email){ msgEl.style.color='var(--red)'; msgEl.textContent='Email required'; return; }
   msgEl.style.color='var(--text2)'; msgEl.textContent='Inviting…';
-  const { data, error } = await rpcFetch('invite_member', { pid: proj.id, email_in: email });
-  if(error){ msgEl.style.color='var(--red)'; msgEl.textContent=error.message; return; }
-  if(data && data.ok === false){ msgEl.style.color='var(--red)'; msgEl.textContent=data.error; return; }
-  msgEl.style.color='var(--accent)'; msgEl.textContent='Added.';
+  // Call the Edge Function — it adds existing users directly, or sends a Supabase
+  // invite email (with magic-link signup) for emails that don't have an account.
+  const stored = (typeof readStoredSession === 'function') ? readStoredSession() : null;
+  const token = stored?.access_token;
+  let resp, body;
+  try {
+    resp = await fetch(`${SUPABASE_URL}/functions/v1/invite-user`, {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + token,
+        'apikey': SUPABASE_ANON_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ email, project_id: proj.id, role: 'member' })
+    });
+    body = await resp.json().catch(() => null);
+  } catch(e){ msgEl.style.color='var(--red)'; msgEl.textContent='Network error: '+e.message; return; }
+  if(!resp.ok || !body?.ok){
+    msgEl.style.color='var(--red)';
+    msgEl.textContent = (body && body.error) ? body.error : ('HTTP ' + resp.status);
+    return;
+  }
+  msgEl.style.color='var(--accent)';
+  msgEl.textContent = body.status === 'emailed'
+    ? 'Invite email sent. They\'ll join the project after signing up.'
+    : 'Added.';
   document.getElementById('inviteEmail').value = '';
   await fetchMembers(proj.id);
   renderMembersList();

@@ -306,6 +306,7 @@ function renderSubCard(t,s,idx){
 let _drawerId=null;
 let _dragTaskId=null;
 let _drawerSubIdx=null;
+let _drawerNestIdx=null;
 
 function openDrawer(id){
   _drawerId=id;
@@ -317,10 +318,11 @@ function openDrawer(id){
 function closeDrawer(){
   document.getElementById('drawer').classList.remove('open');
   document.getElementById('drawerOverlay').classList.remove('open');
-  _drawerId=null; _drawerSubIdx=null;
+  _drawerId=null; _drawerSubIdx=null; _drawerNestIdx=null;
 }
 
 function renderDrawer(){
+  if(_drawerNestIdx!==null){ renderNestedDrawer(); return; }
   if(_drawerSubIdx!==null){ renderSubtaskDrawer(); return; }
   const t=S.tasks.find(t=>t.id===_drawerId); if(!t) return;
   const reopens=(t.history||[]).filter(h=>h.type==='reopened');
@@ -469,7 +471,147 @@ function openSubtaskDetail(taskId,idx){
   document.getElementById('drawer').classList.add('open');
   document.getElementById('drawerOverlay').classList.add('open');
 }
-function backToTask(){ _drawerSubIdx=null; renderDrawer(); }
+function backToTask(){ _drawerSubIdx=null; _drawerNestIdx=null; renderDrawer(); }
+function openNestedDetail(nestIdx){ _drawerNestIdx=nestIdx; renderDrawer(); }
+function backToSubtask(){ _drawerNestIdx=null; renderDrawer(); }
+
+function renderNestedDrawer(){
+  const t=S.tasks.find(t=>t.id===_drawerId); if(!t) return;
+  const s=t.subtasks?.[_drawerSubIdx]; if(!s) return;
+  const n=s.subtasks?.[_drawerNestIdx]; if(!n) return;
+  if(!n.screenshots) n.screenshots=[];
+  if(!n.history) n.history=[{type:'created',ts:n.createdAt||Date.now()}];
+
+  // HEAD
+  document.getElementById('drawerHead').innerHTML=`
+    <button class="drawer-back" onclick="backToSubtask()">← ${esc(s.title)}</button>
+    <button class="drawer-close" onclick="closeDrawer()">✕</button>`;
+
+  // BODY
+  let body='';
+  body+=`<div class="sub-detail-header">
+    <div class="drawer-check ${n.done?'checked':''}" onclick="toggleNestedSubtask('${t.id}',${_drawerSubIdx},${_drawerNestIdx})"></div>
+    <input class="drawer-title-input ${n.done?'done':''}" id="nestTitleInputDetail_${n.id}" value="${esc(n.title)}" onblur="saveNestedTitleFromDetail()" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" />
+  </div>`;
+
+  let badges='';
+  if(n.done) badges+=`<span class="badge b-done">✓ DONE</span>`;
+  if(n.assignee) badges+=`<span class="assign-wrap">${USER_ICON_SVG}<span class="badge b-assign">@${esc(n.assignee)}</span></span>`;
+  if(badges) body+=`<div class="d-section"><div class="d-badges">${badges}</div></div>`;
+
+  body+=`<div class="d-section"><div class="d-section-label">Assign To</div>
+    <select class="sub-phase-select" id="nestAssignSel_${n.id}" onchange="saveNestedAssignee()">${buildAssigneeOptions(n.assignee||'')}</select>
+  </div>`;
+
+  body+=`<div class="d-section"><div class="d-section-label">Timeline</div>
+    <div class="sub-dates-row">
+      <div class="sub-date-field"><label>Start Date</label>
+        <input type="date" id="nestStart_${n.id}" value="${n.startDate?n.startDate.slice(0,10):''}" onchange="saveNestedDates()" />
+      </div>
+      ${n.done?`<div class="sub-date-field"><label>Completed</label>
+        <input type="date" id="nestCompleted_${n.id}" value="${tsToDateInput(n.completedAt)}" onchange="saveNestedDates()" />
+      </div>`:''}
+    </div>
+    <div class="sub-dates-row" style="margin-top:8px">
+      <div class="sub-date-field"><label>Due Date</label>
+        <input type="date" id="nestDue_${n.id}" value="${n.due||''}" onchange="saveNestedDates()" />
+      </div>
+    </div>
+  </div>`;
+
+  body+=`<div class="d-section"><div class="d-section-label">Description</div>
+    <textarea class="sub-desc-input" id="nestDesc_${n.id}" placeholder="Add notes, links, details..." oninput="debounceSaveNestedDesc()">${esc(n.desc||'')}</textarea>
+  </div>`;
+
+  const shots=n.screenshots;
+  let ssGrid=shots.map((ss,i)=>`
+    <div class="ss-thumb" onclick="openNestedLightbox(${i})">
+      <img src="${shotUrl(ss)}" loading="lazy" />
+      <button class="ss-del" onclick="deleteNestedShot(event,${i})">✕</button>
+    </div>`).join('');
+  ssGrid+=`<button class="ss-upload-btn" onclick="triggerNestedUpload()">
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M10 3v10M5 8l5-5 5 5" stroke="#4a5568" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 17h14" stroke="#4a5568" stroke-width="1.5" stroke-linecap="round"/></svg>
+    <span>Add screenshot</span>
+  </button>`;
+  body+=`<div class="d-section"><div class="d-section-label">Screenshots (${shots.length})</div><div class="screenshots-grid">${ssGrid}</div></div>`;
+
+  document.getElementById('drawerBody').innerHTML=body;
+  document.getElementById('drawerFoot').innerHTML=`
+    <button class="btn btn-danger btn-sm" onclick="deleteNestedFromDrawer()">🗑 Delete Subtask</button>`;
+}
+
+function _curNested(){
+  const t=S.tasks.find(t=>t.id===_drawerId); if(!t) return null;
+  const s=t.subtasks?.[_drawerSubIdx]; if(!s) return null;
+  const n=s.subtasks?.[_drawerNestIdx]; if(!n) return null;
+  return { t, s, n };
+}
+function saveNestedTitleFromDetail(){
+  const ctx=_curNested(); if(!ctx) return;
+  const inp=document.getElementById('nestTitleInputDetail_'+ctx.n.id); if(!inp) return;
+  const v=inp.value.trim(); if(!v){ inp.value=ctx.n.title; return; }
+  if(v===ctx.n.title) return;
+  ctx.n.title=v; save(); render();
+}
+function saveNestedAssignee(){
+  const ctx=_curNested(); if(!ctx) return;
+  const sel=document.getElementById('nestAssignSel_'+ctx.n.id);
+  ctx.n.assignee = sel ? (sel.value || null) : ctx.n.assignee;
+  save(); renderDrawer();
+}
+function saveNestedDates(){
+  const ctx=_curNested(); if(!ctx) return;
+  const start=document.getElementById('nestStart_'+ctx.n.id);
+  const due=document.getElementById('nestDue_'+ctx.n.id);
+  if(start) ctx.n.startDate = start.value || null;
+  if(due) ctx.n.due = due.value || '';
+  if(ctx.n.done){
+    const comp=document.getElementById('nestCompleted_'+ctx.n.id);
+    if(comp && comp.value){
+      const [y,m,d]=comp.value.split('-').map(Number);
+      ctx.n.completedAt=new Date(y,m-1,d).getTime();
+    }
+  }
+  save();
+}
+let _nestDescTimer=null;
+function debounceSaveNestedDesc(){
+  clearTimeout(_nestDescTimer);
+  _nestDescTimer=setTimeout(()=>{
+    const ctx=_curNested(); if(!ctx) return;
+    const inp=document.getElementById('nestDesc_'+ctx.n.id);
+    if(inp){ ctx.n.desc=inp.value.trim(); save(); }
+  }, 500);
+}
+function deleteNestedFromDrawer(){
+  const ctx=_curNested(); if(!ctx) return;
+  if(!confirm('Delete this nested subtask?')) return;
+  // Clean up storage paths first
+  removePathsFromStorage((ctx.n.screenshots||[]).filter(isStoragePath));
+  ctx.s.subtasks.splice(_drawerNestIdx, 1);
+  _drawerNestIdx=null;
+  save(); render(); renderDrawer();
+}
+function openNestedLightbox(idx){
+  const ctx=_curNested(); if(!ctx||!ctx.n.screenshots) return;
+  document.getElementById('lbImg').src=shotUrl(ctx.n.screenshots[idx]);
+  document.getElementById('lightbox').classList.add('open');
+}
+function deleteNestedShot(e, idx){
+  e.stopPropagation();
+  const ctx=_curNested(); if(!ctx||!ctx.n.screenshots) return;
+  const removed=ctx.n.screenshots.splice(idx,1)[0];
+  removeFromStorage(removed);
+  save(); renderDrawer();
+}
+let _uploadForNested=null; // {taskId, subIdx, nestIdx}
+function triggerNestedUpload(){
+  _uploadForNested={ taskId:_drawerId, subIdx:_drawerSubIdx, nestIdx:_drawerNestIdx };
+  _uploadForSubtask=null; _uploadForTaskId=null;
+  document.getElementById('ssInput').value='';
+  document.getElementById('ssInput').click();
+}
+
 
 function renderSubtaskDrawer(){
   const t=S.tasks.find(t=>t.id===_drawerId); if(!t||_drawerSubIdx===null) return;
@@ -519,6 +661,32 @@ function renderSubtaskDrawer(){
       ${s.done?`<div class="sub-date-field"><label>Completed</label><input type="date" id="subCompleted_${s.id}" value="${tsToDateInput(s.completedAt)}" onchange="saveSubtaskDates('${t.id}',${_drawerSubIdx})" /></div>`:''}
     </div>
   </div>`;
+
+  // Nested subtasks (level-2). No phase deployment. Same toggle/delete pattern.
+  if(!s.subtasks) s.subtasks=[];
+  const nests = s.subtasks;
+  const nestsDone = nests.filter(n=>n.done).length;
+  const nestsPct = nests.length ? Math.round(nestsDone/nests.length*100) : 0;
+  let nestHtml = '';
+  if(nests.length){
+    nestHtml += `<div class="st-progress">
+      <div class="st-progress-track"><div class="st-progress-fill" style="width:${nestsPct}%"></div></div>
+      <div class="st-progress-txt">${nestsDone}/${nests.length}</div>
+    </div>`;
+    nestHtml += `<div class="subtask-list">`+nests.map((n,ni)=>`
+      <div class="subtask-row" onclick="openNestedDetail(${ni})">
+        <div class="st-check ${n.done?'checked':''}" onclick="event.stopPropagation();toggleNestedSubtask('${t.id}',${_drawerSubIdx},${ni})"></div>
+        <div class="st-info"><div class="st-title ${n.done?'done':''}">${esc(n.title)}</div></div>
+        ${n.assignee?`<span class="assign-wrap">${USER_ICON_SVG}<span class="st-assign">@${esc(n.assignee)}</span></span>`:''}
+        <button class="st-del" onclick="event.stopPropagation();deleteNestedSubtask('${t.id}',${_drawerSubIdx},${ni})">✕</button>
+      </div>`).join('')+`</div>`;
+  }
+  nestHtml += `<div class="st-add-row">
+    <input class="st-add-input" id="nestInput_${s.id}" placeholder="Add nested subtask..." onkeydown="if(event.key==='Enter') addNestedSubtask('${t.id}',${_drawerSubIdx})" />
+    <select class="st-add-assign" id="nestAssign_${s.id}">${buildAssigneeOptions('')}</select>
+    <button class="btn btn-ghost btn-sm" onclick="addNestedSubtask('${t.id}',${_drawerSubIdx})">+</button>
+  </div>`;
+  body+=`<div class="d-section"><div class="d-section-label">Subtasks${nests.length?` (${nestsDone}/${nests.length})`:''}</div>${nestHtml}</div>`;
 
   body+=`<div class="d-section"><div class="d-section-label">Description</div>
     <textarea class="sub-desc-input" id="subDesc_${s.id}" placeholder="Add notes, links, details..." oninput="debounceSaveSubDesc('${t.id}',${_drawerSubIdx})">${esc(s.desc||'')}</textarea>
@@ -605,7 +773,12 @@ function deleteSubtaskFromDrawer(taskId,idx){
   if(!confirm('Delete this subtask?')) return;
   const t=S.tasks.find(t=>t.id===taskId); if(!t||!t.subtasks) return;
   const removedSub = t.subtasks.splice(idx,1)[0]; _drawerSubIdx=null;
-  if(removedSub) removePathsFromStorage(collectTaskPaths({ screenshots: removedSub.screenshots }));
+  if(removedSub){
+    const paths = [];
+    (removedSub.screenshots||[]).forEach(s => { if(isStoragePath(s)) paths.push(s); });
+    (removedSub.subtasks||[]).forEach(n => (n.screenshots||[]).forEach(s => { if(isStoragePath(s)) paths.push(s); }));
+    removePathsFromStorage(paths);
+  }
   save(); render(); renderDrawer();
 }
 function openSubLightbox(taskId,idx,shotIdx){
@@ -637,8 +810,8 @@ function handleCheck(id){
     if(!t.history) t.history=[];
     t.history.push({type:'completed',ts:now,elapsed:t.startedAt?now-t.startedAt:null,prevStart:t.startedAt||null});
     t.startedAt=null;
-    // Cascade: complete any ongoing subtasks. (Reopening the parent later
-    // does NOT reopen these — subtasks stay done.)
+    // Cascade: complete any ongoing subtasks AND their nested subtasks.
+    // (Reopening the parent later does NOT reopen these.)
     (t.subtasks||[]).forEach(s=>{
       if(!s.done){
         s.done=true; s.completedAt=now;
@@ -648,6 +821,16 @@ function handleCheck(id){
         if(!s.history) s.history=[{type:'created',ts:s.createdAt||now}];
         s.history.push({type:'completed',ts:now,elapsed:s.elapsed,reason:'parent task completed'});
       }
+      (s.subtasks||[]).forEach(n=>{
+        if(!n.done){
+          n.done=true; n.completedAt=now;
+          const ns=n.startedAt||n.createdAt;
+          n.elapsed=(n.elapsed||0)+(ns?now-ns:0);
+          n.startedAt=null;
+          if(!n.history) n.history=[{type:'created',ts:n.createdAt||now}];
+          n.history.push({type:'completed',ts:now,elapsed:n.elapsed,reason:'parent task completed'});
+        }
+      });
     });
     save(); render(); if(_drawerId===id) renderDrawer();
   } else {
@@ -807,6 +990,25 @@ function selectProject(id){
   closeSidebar(); // auto-close on mobile after picking
 }
 
+function toggleTheme(){
+  const cur = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+  const next = cur === 'light' ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', next);
+  try { localStorage.setItem('pt_theme', next); } catch(e){}
+  syncThemeIcon();
+}
+function syncThemeIcon(){
+  const t = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+  const dark = document.getElementById('themeIconDark');
+  const light = document.getElementById('themeIconLight');
+  if(dark && light){
+    // In dark mode show moon (to switch to light); in light mode show sun.
+    dark.style.display = t === 'dark' ? '' : 'none';
+    light.style.display = t === 'light' ? '' : 'none';
+  }
+}
+window.addEventListener('DOMContentLoaded', syncThemeIcon);
+
 function toggleSidebar(){
   const sb = document.querySelector('.sidebar');
   const bd = document.getElementById('sidebarBackdrop');
@@ -905,6 +1107,17 @@ function toggleSubtask(taskId,idx){
     s.startedAt=null;
     if(!s.history) s.history=[{type:'created',ts:s.createdAt||now}];
     s.history.push({type:'completed',ts:now,elapsed:s.elapsed});
+    // Cascade: complete any open nested subtasks
+    (s.subtasks||[]).forEach(n=>{
+      if(!n.done){
+        n.done=true; n.completedAt=now;
+        const ns=n.startedAt||n.createdAt;
+        n.elapsed=(n.elapsed||0)+(ns?now-ns:0);
+        n.startedAt=null;
+        if(!n.history) n.history=[{type:'created',ts:n.createdAt||now}];
+        n.history.push({type:'completed',ts:now,elapsed:n.elapsed,reason:'parent subtask completed'});
+      }
+    });
     save(); renderDrawer(); render();
   } else {
     _reopenSubInfo={taskId,idx};
@@ -914,10 +1127,74 @@ function toggleSubtask(taskId,idx){
   }
 }
 
+// ── NESTED SUBTASKS (level-2; cannot be deployed to a phase) ────
+function addNestedSubtask(taskId, subIdx){
+  const t = S.tasks.find(t=>t.id===taskId); if(!t||!t.subtasks) return;
+  const s = t.subtasks[subIdx]; if(!s) return;
+  if(!s.subtasks) s.subtasks = [];
+  const inp = document.getElementById('nestInput_'+s.id);
+  const asgn = document.getElementById('nestAssign_'+s.id);
+  const title = (inp?.value || '').trim(); if(!title) return;
+  const assignee = (asgn?.value || '').trim();
+  const now = Date.now();
+  s.subtasks.push({
+    id: uid(), title, assignee: assignee || null,
+    done: false, startDate: tsToDateInput(now), startedAt: now, createdAt: now, elapsed: 0,
+    desc: '', screenshots: [],
+    history: [{type:'created', ts: now}]
+  });
+  if(inp) inp.value = '';
+  save(); renderDrawer();
+}
+function toggleNestedSubtask(taskId, subIdx, nestIdx){
+  const t = S.tasks.find(t=>t.id===taskId); if(!t||!t.subtasks) return;
+  const s = t.subtasks[subIdx]; if(!s||!s.subtasks) return;
+  const n = s.subtasks[nestIdx]; if(!n) return;
+  const now = Date.now();
+  if(!n.done){
+    n.done = true; n.completedAt = now;
+    const started = n.startedAt || n.createdAt;
+    n.elapsed = (n.elapsed||0) + (started ? now - started : 0);
+    n.startedAt = null;
+    if(!n.history) n.history = [{type:'created', ts: n.createdAt || now}];
+    n.history.push({type:'completed', ts: now, elapsed: n.elapsed});
+  } else {
+    n.done = false; n.completedAt = null; n.startedAt = now;
+    if(!n.history) n.history = [{type:'created', ts: n.createdAt || now}];
+    n.history.push({type:'reopened', ts: now});
+  }
+  save(); renderDrawer(); render();
+}
+function deleteNestedSubtask(taskId, subIdx, nestIdx){
+  const t = S.tasks.find(t=>t.id===taskId); if(!t||!t.subtasks) return;
+  const s = t.subtasks[subIdx]; if(!s||!s.subtasks) return;
+  const removed = s.subtasks.splice(nestIdx, 1)[0];
+  if(removed) removePathsFromStorage((removed.screenshots||[]).filter(isStoragePath));
+  save(); renderDrawer();
+}
+function saveNestedTitle(taskId, subIdx, nestIdx){
+  const t = S.tasks.find(t=>t.id===taskId); if(!t||!t.subtasks) return;
+  const s = t.subtasks[subIdx]; if(!s||!s.subtasks) return;
+  const n = s.subtasks[nestIdx]; if(!n) return;
+  const inp = document.getElementById(`nestTitleInput_${s.id}_${nestIdx}`);
+  if(!inp) return;
+  const newTitle = inp.value.trim();
+  if(!newTitle){ inp.value = n.title; return; }
+  if(newTitle === n.title) return;
+  n.title = newTitle;
+  save();
+}
+
 function deleteSubtask(taskId,idx){
   const t=S.tasks.find(t=>t.id===taskId); if(!t||!t.subtasks) return;
   const removedSub = t.subtasks.splice(idx,1)[0];
-  if(removedSub) removePathsFromStorage(collectTaskPaths({ screenshots: removedSub.screenshots }));
+  if(removedSub){
+    // Subtask owns its own screenshots + any nested subtask screenshots
+    const paths = [];
+    (removedSub.screenshots||[]).forEach(s => { if(isStoragePath(s)) paths.push(s); });
+    (removedSub.subtasks||[]).forEach(n => (n.screenshots||[]).forEach(s => { if(isStoragePath(s)) paths.push(s); }));
+    removePathsFromStorage(paths);
+  }
   save(); renderDrawer(); render();
 }
 
@@ -997,10 +1274,16 @@ document.getElementById('ssInput').addEventListener('change', async function(){
   this.value = '';
   if(!files.length) return;
 
-  // Resolve the target (task or subtask) and the project id for storage path.
-  let target = null, projectId = null, isSubUpload = false, subInfo = null;
-  if(_uploadForSubtask){
-    subInfo = _uploadForSubtask; _uploadForSubtask = null; isSubUpload = true;
+  // Resolve the target (task / subtask / nested subtask) and project id.
+  let target = null, projectId = null;
+  if(_uploadForNested){
+    const { taskId, subIdx, nestIdx } = _uploadForNested; _uploadForNested = null;
+    const t = S.tasks.find(x => x.id === taskId); if(!t) return;
+    const s = t.subtasks?.[subIdx]; if(!s) return;
+    target = s.subtasks?.[nestIdx]; if(!target) return;
+    projectId = t.projectId;
+  } else if(_uploadForSubtask){
+    const subInfo = _uploadForSubtask; _uploadForSubtask = null;
     const t = S.tasks.find(x => x.id === subInfo.taskId); if(!t || !t.subtasks) return;
     target = t.subtasks[subInfo.idx]; if(!target) return;
     projectId = t.projectId;
@@ -1081,12 +1364,15 @@ async function removeFromStorage(pathOrData){
 }
 
 // Collect storage paths (ignore legacy base64 / in-flight blob) from a task
-// including all of its subtasks.
+// including subtasks AND nested subtasks (level-2).
 function collectTaskPaths(task){
   const out = [];
   (task?.screenshots || []).forEach(s => { if(isStoragePath(s)) out.push(s); });
   (task?.subtasks || []).forEach(sub => {
     (sub?.screenshots || []).forEach(s => { if(isStoragePath(s)) out.push(s); });
+    (sub?.subtasks || []).forEach(nest => {
+      (nest?.screenshots || []).forEach(s => { if(isStoragePath(s)) out.push(s); });
+    });
   });
   return out;
 }

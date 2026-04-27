@@ -328,6 +328,36 @@ language sql security definer stable set search_path = project_tracker, public a
 $$;
 grant execute on function project_tracker.get_my_tasks() to authenticated;
 
+-- ── pending invites (for emails that don't have an account yet) ─
+create table if not exists project_tracker.pending_invites (
+  email      text not null,
+  project_id uuid not null references project_tracker.projects(id) on delete cascade,
+  role       text not null default 'member' check (role in ('admin','member')),
+  invited_by uuid references auth.users(id) on delete set null,
+  invited_at timestamptz not null default now(),
+  primary key (email, project_id)
+);
+create index if not exists pending_invites_email_idx on project_tracker.pending_invites(lower(email));
+
+-- When a new user signs up, auto-add them to any project they had pending invites for.
+create or replace function project_tracker.process_pending_invites()
+returns trigger language plpgsql security definer set search_path = project_tracker, public, auth as $$
+begin
+  insert into project_tracker.project_members (project_id, user_id, role)
+  select pi.project_id, new.id, pi.role
+  from project_tracker.pending_invites pi
+  where lower(pi.email) = lower(new.email)
+  on conflict do nothing;
+
+  delete from project_tracker.pending_invites where lower(email) = lower(new.email);
+  return new;
+end; $$;
+
+drop trigger if exists pending_invites_trigger on auth.users;
+create trigger pending_invites_trigger
+after insert on auth.users
+for each row execute function project_tracker.process_pending_invites();
+
 -- ── debug: what does Postgres see when a request comes in? ──
 create or replace function project_tracker.whoami() returns json
 language sql stable as $$
