@@ -680,9 +680,27 @@ async function refreshTokenSafe(refreshToken){
   } catch(e){ console.warn('[refresh] failed', e); return null; }
 }
 
+// Detect Supabase invite link before supabase-js consumes the URL hash.
+const _inviteHashOnLoad = (typeof window !== 'undefined' && /type=invite/i.test(window.location.hash || '')) ? window.location.hash : null;
+
 async function boot(){
   console.log('[boot] start');
   try {
+    // If the user just clicked a Supabase invite email link, route them to
+    // the "set your password" overlay before normal hydration.
+    if(_inviteHashOnLoad){
+      console.log('[boot] invite flow detected');
+      // Wait briefly for supabase-js to consume the hash and set the session.
+      await new Promise(r => setTimeout(r, 250));
+      const stored = readStoredSession();
+      _user = stored?.user || null;
+      if(_user){
+        showInviteSetup(_user.email);
+        // Clean URL so a refresh doesn't re-trigger this flow.
+        try { history.replaceState(null, '', window.location.pathname + window.location.search); } catch(e){}
+        return;
+      }
+    }
     // 1) Read stored session instantly (no network call, no locks).
     let stored = readStoredSession();
     console.log('[boot] stored session:', !!stored, 'expires_at:', stored?.expires_at);
@@ -743,6 +761,44 @@ async function boot(){
     alert('Failed to start: '+(e.message||e));
     showAuth();
   }
+}
+
+// ── COMPLETE INVITE SIGNUP (called after invite link click) ─────
+function showInviteSetup(email){
+  document.getElementById('setupEmail').value = email || '';
+  document.getElementById('setupName').value = '';
+  document.getElementById('setupPassword').value = '';
+  document.getElementById('setupMsg').textContent = '';
+  // Hide other auth-blocking overlays
+  document.getElementById('authOverlay').classList.remove('open');
+  document.getElementById('setupOverlay').classList.add('open');
+  document.querySelector('body').classList.add('locked');
+  setTimeout(() => document.getElementById('setupName').focus(), 200);
+}
+async function completeInviteSignup(){
+  const name = document.getElementById('setupName').value.trim();
+  const password = document.getElementById('setupPassword').value;
+  const msg = document.getElementById('setupMsg');
+  if(!name){ msg.style.color='var(--red)'; msg.textContent='Display name required'; return; }
+  if(!password || password.length < 6){ msg.style.color='var(--red)'; msg.textContent='Password must be at least 6 characters'; return; }
+  msg.style.color='var(--text2)'; msg.textContent='Saving…';
+  const { data, error } = await sb.auth.updateUser({
+    password,
+    data: { full_name: name }
+  });
+  if(error){ msg.style.color='var(--red)'; msg.textContent=error.message; return; }
+  _user = data.user;
+  // Hide setup overlay; proceed with normal app flow
+  document.getElementById('setupOverlay').classList.remove('open');
+  document.querySelector('body').classList.remove('locked');
+  msg.textContent='';
+  // Hydrate + render now that the user is fully set up
+  renderAuthBar();
+  await hydrate();
+  render();
+  if(S.activeProject) fetchMembers(S.activeProject);
+  subscribeRealtime();
+  _lastHydratedUid = _user?.id;
 }
 
 // Emergency reset — clear local session state and reload

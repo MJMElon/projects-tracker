@@ -17,6 +17,14 @@ alter default privileges in schema project_tracker
 alter default privileges in schema project_tracker
   grant usage, select on sequences to authenticated;
 
+-- service_role grants — needed for Edge Functions that use the service-role
+-- key to call PostgREST (e.g. invite-user) against this custom schema.
+grant usage on schema project_tracker to service_role;
+grant all on all tables in schema project_tracker to service_role;
+grant all on all sequences in schema project_tracker to service_role;
+alter default privileges in schema project_tracker grant all on tables to service_role;
+alter default privileges in schema project_tracker grant all on sequences to service_role;
+
 -- ── projects ────────────────────────────────────────────────
 create table if not exists project_tracker.projects (
   id         uuid primary key default gen_random_uuid(),
