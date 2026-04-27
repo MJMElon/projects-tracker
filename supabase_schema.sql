@@ -194,6 +194,9 @@ $$;
 grant execute on function project_tracker.is_admin_or_owner(uuid) to authenticated;
 
 -- ── invite by email RPC (owner OR admin) ────────────────────
+-- If the email is already a registered user → add directly to project_members.
+-- If not → record a pending_invites row so they auto-join on signup.
+-- The inviter's UI is responsible for sending the actual signup email (mailto:).
 create or replace function project_tracker.invite_member(pid uuid, email_in text)
 returns json language plpgsql security definer set search_path = project_tracker, public as $$
 declare
@@ -203,12 +206,17 @@ begin
     raise exception 'only owners or admins can invite members';
   end if;
   select id into uid from auth.users where lower(email) = lower(email_in) limit 1;
-  if uid is null then
-    return json_build_object('ok', false, 'error', 'no user with that email — ask them to sign up first');
+  if uid is not null then
+    insert into project_tracker.project_members (project_id, user_id, role)
+    values (pid, uid, 'member') on conflict do nothing;
+    return json_build_object('ok', true, 'status', 'added', 'user_id', uid);
   end if;
-  insert into project_tracker.project_members (project_id, user_id, role)
-  values (pid, uid, 'member') on conflict do nothing;
-  return json_build_object('ok', true, 'user_id', uid);
+  -- No account yet — record pending invite. Trigger on auth.users insert
+  -- (project_tracker.process_pending_invites) will join them when they sign up.
+  insert into project_tracker.pending_invites (email, project_id, role, invited_by)
+  values (lower(email_in), pid, 'member', auth.uid())
+  on conflict (email, project_id) do update set role = excluded.role, invited_by = excluded.invited_by, invited_at = now();
+  return json_build_object('ok', true, 'status', 'pending');
 end; $$;
 grant execute on function project_tracker.invite_member(uuid, text) to authenticated;
 
