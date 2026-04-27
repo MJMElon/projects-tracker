@@ -680,9 +680,12 @@ async function refreshTokenSafe(refreshToken){
   } catch(e){ console.warn('[refresh] failed', e); return null; }
 }
 
-// Capture URL hash early in case it's an invite or password-recovery redirect.
-const _inviteHashOnLoad = (typeof window !== 'undefined' && /type=invite/i.test(window.location.hash || '')) ? window.location.hash : null;
-const _recoveryHashOnLoad = (typeof window !== 'undefined' && /type=recovery/i.test(window.location.hash || '')) ? window.location.hash : null;
+// Capture URL early in case it's an invite or password-recovery redirect.
+// Supabase puts these in either the hash (legacy implicit flow) or the
+// search string (PKCE flow), depending on email template / project settings.
+const _urlOnLoad = (typeof window !== 'undefined') ? (window.location.hash + ' ' + window.location.search) : '';
+const _inviteHashOnLoad = /type=invite/i.test(_urlOnLoad) ? _urlOnLoad : null;
+const _recoveryHashOnLoad = /type=recovery/i.test(_urlOnLoad) ? _urlOnLoad : null;
 
 // True if the signed-in user was invited and hasn't completed setup yet.
 function needsInviteSetup(user){
@@ -731,16 +734,25 @@ async function boot(){
       }
     }
 
+    // For recovery flows over PKCE, supabase-js may still be exchanging the
+    // code → wait briefly for it to set the session.
+    if(_recoveryHashOnLoad && !stored){
+      console.log('[boot] waiting for recovery session...');
+      for(let i = 0; i < 6 && !stored; i++){
+        await new Promise(r => setTimeout(r, 250));
+        stored = readStoredSession();
+      }
+    }
+
     _user = stored?.user || null;
     renderAuthBar();
-    if(!_user){ console.log('[boot] no user → showAuth'); showAuth(); return; }
-    // Password recovery flow → show "set new password" overlay before app loads.
     if(_recoveryHashOnLoad){
-      console.log('[boot] recovery flow');
-      try { history.replaceState(null, '', window.location.pathname + window.location.search); } catch(e){}
+      console.log('[boot] recovery flow → show reset overlay');
+      try { history.replaceState(null, '', window.location.pathname); } catch(e){}
       showResetPassword();
       return;
     }
+    if(!_user){ console.log('[boot] no user → showAuth'); showAuth(); return; }
     // Invited user who hasn't set a display name → run them through the
     // "complete your account" flow before letting them into the app.
     if(needsInviteSetup(_user)){
