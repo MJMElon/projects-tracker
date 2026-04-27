@@ -445,6 +445,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .auth-sub{color:var(--text2);font-size:13px;margin-bottom:22px;}
 .auth-card .field{margin-bottom:14px;}
 .auth-actions{display:flex;gap:8px;margin-top:6px;}
+#authForgotLink:hover{color:var(--accent);}
 body.locked{overflow:hidden;}
 
 /* ── AUTH BAR (header) ── */

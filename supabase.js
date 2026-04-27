@@ -263,7 +263,20 @@ function toggleAuthMode(){
   document.getElementById('authPrimaryBtn').textContent = _authMode === 'signup' ? 'Create account' : 'Sign in';
   document.getElementById('authPrimaryBtn').onclick = _authMode === 'signup' ? doSignUp : doSignIn;
   document.getElementById('authToggleBtn').textContent = _authMode === 'signup' ? 'Have an account? Sign in' : 'Sign up';
+  // Forgot-password link only makes sense in sign-in mode.
+  const forgotRow = document.getElementById('authForgotRow');
+  if(forgotRow) forgotRow.style.display = _authMode === 'signup' ? 'none' : '';
   setAuthMsg('', false);
+}
+
+async function doForgotPassword(){
+  const email = document.getElementById('authEmail').value.trim();
+  if(!email){ setAuthMsg('Enter your email first, then click "Forgot password".', true); return; }
+  setAuthMsg('Sending reset email…', false);
+  const redirectTo = window.location.origin + window.location.pathname;
+  const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo });
+  if(error){ setAuthMsg(error.message, true); return; }
+  setAuthMsg('If an account exists for that email, a reset link is on the way.', false);
 }
 
 async function doSignIn(){
