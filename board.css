@@ -6,8 +6,8 @@
 }
 
 :root, :root[data-theme="dark"] {
-  --bg:#13161c;--surface:#252932;--surface2:#2a2e38;--surface3:#333845;
-  --border:#3a4050;--border2:#4a5160;
+  --bg:#0a0c10;--surface:#181b22;--surface2:#1d2028;--surface3:#262a35;
+  --border:#2e3340;--border2:#3d4252;
   --text:#e8ecf0;--text2:#a3aec0;--text3:#7a8499;
   --accent:#4ade80;--accent-dim:rgba(74,222,128,0.12);--accent-glow:rgba(74,222,128,0.28);
   --red:#f87171;--red-dim:rgba(248,113,113,0.12);
