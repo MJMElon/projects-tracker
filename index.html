@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Vibe Tracker · MJM</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="board.css?v=86">
+<link rel="stylesheet" href="board.css?v=87">
 <link rel="icon" type="image/svg+xml" href="icon.svg">
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="manifest" href="manifest.webmanifest">
@@ -25,6 +25,14 @@
       const t = saved || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
       document.documentElement.setAttribute('data-theme', t);
     } catch(e){ document.documentElement.setAttribute('data-theme', 'dark'); }
+    // If user arrived via an invite/recovery link, mark the document so the
+    // default sign-in card is hidden — setup/reset overlay will be shown
+    // by the boot script after session is ready.
+    try {
+      const blob = (location.hash || '') + ' ' + (location.search || '');
+      if (/type=invite/i.test(blob)) document.documentElement.setAttribute('data-auth-flow', 'invite');
+      else if (/type=recovery/i.test(blob)) document.documentElement.setAttribute('data-auth-flow', 'recovery');
+    } catch(e){}
   })();
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -347,7 +355,7 @@
 <!-- hidden file input -->
 <input type="file" id="ssInput" accept="image/*" style="display:none" multiple />
 
-<script src="board.js?v=86"></script>
-<script src="supabase.js?v=86"></script>
+<script src="board.js?v=87"></script>
+<script src="supabase.js?v=87"></script>
 </body>
 </html>
