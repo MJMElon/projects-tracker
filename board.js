@@ -509,7 +509,71 @@ function renderDrawer(){
   // FOOT
   document.getElementById('drawerFoot').innerHTML=`
     <button class="btn btn-ghost btn-sm" style="flex:1" onclick="openEditTask('${t.id}')">✏️ Edit</button>
+    <button class="btn btn-ghost btn-sm" onclick="duplicateTask('${t.id}')">📋 Duplicate</button>
     <button class="btn btn-danger btn-sm" onclick="deleteFromDrawer('${t.id}')">🗑 Delete</button>`;
+}
+
+// Duplicate a main task — clones subtasks AND nested subtasks. Everything is
+// reset to a fresh "open" state with start dates set to now. Screenshots are
+// shared by reference (same storage paths) to avoid extra uploads.
+function duplicateTask(taskId){
+  const src = S.tasks.find(t => t.id === taskId);
+  if(!src) return;
+  const now = Date.now();
+  const startDate = tsToDateInput(now);
+
+  function cloneNested(n){
+    return {
+      id: uid(),
+      title: n.title,
+      desc: n.desc || '',
+      assignee: n.assignee || null,
+      done: false, completedAt: null,
+      startedAt: now, createdAt: now,
+      startDate, due: n.due || '',
+      elapsed: 0,
+      screenshots: [...(n.screenshots || [])],
+      history: [{ type: 'created', ts: now }]
+    };
+  }
+  function cloneSub(s){
+    return {
+      id: uid(),
+      title: s.title,
+      desc: s.desc || '',
+      assignee: s.assignee || null,
+      done: false, completedAt: null,
+      startedAt: now, createdAt: now,
+      startDate, due: s.due || '',
+      elapsed: 0,
+      phase: s.phase || null,
+      screenshots: [...(s.screenshots || [])],
+      subtasks: (s.subtasks || []).map(cloneNested),
+      history: [{ type: 'created', ts: now }]
+    };
+  }
+
+  const dup = {
+    id: uid(),
+    projectId: src.projectId,
+    title: 'Copy of ' + src.title,
+    desc: src.desc || '',
+    phase: src.phase,
+    urgency: src.urgency,
+    assignee: src.assignee || '',
+    due: src.due || '',
+    startDate,
+    done: false,
+    completedAt: null,
+    startedAt: now,
+    createdAt: now,
+    screenshots: [...(src.screenshots || [])],
+    subtasks: (src.subtasks || []).map(cloneSub),
+    history: [{ type: 'created', ts: now }]
+  };
+  S.tasks.push(dup);
+  save();
+  render();
 }
 
 function deleteFromDrawer(id){
@@ -1487,6 +1551,7 @@ function openCtx(e,id){
 function closeCtx(){ document.getElementById('ctx').classList.remove('open'); _ctxId=null; }
 function ctxEdit(){ const id=_ctxId; closeCtx(); openEditTask(id); }
 function ctxToggle(){ const id=_ctxId; closeCtx(); handleCheck(id); }
+function ctxDuplicate(){ const id=_ctxId; closeCtx(); duplicateTask(id); }
 function ctxDelete(){
   if(!confirm('Delete?')) return;
   const t = S.tasks.find(x => x.id === _ctxId);

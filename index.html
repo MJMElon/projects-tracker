@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Vibe Tracker · MJM</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="board.css?v=93">
+<link rel="stylesheet" href="board.css?v=95">
 <link rel="icon" type="image/svg+xml" href="icon.svg">
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="manifest" href="manifest.webmanifest">
@@ -233,6 +233,7 @@
 <div class="ctx" id="ctx">
   <div class="citem" onclick="ctxEdit()">✏️ Edit</div>
   <div class="citem" id="ctxToggleItem" onclick="ctxToggle()">✅ Mark Done</div>
+  <div class="citem" onclick="ctxDuplicate()">📋 Duplicate</div>
   <div class="cdiv"></div>
   <div class="citem danger" onclick="ctxDelete()">🗑 Delete</div>
 </div>
@@ -358,7 +359,7 @@
 <!-- hidden file input -->
 <input type="file" id="ssInput" accept="image/*" style="display:none" multiple />
 
-<script src="board.js?v=93"></script>
-<script src="supabase.js?v=93"></script>
+<script src="board.js?v=95"></script>
+<script src="supabase.js?v=95"></script>
 </body>
 </html>
