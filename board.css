@@ -77,6 +77,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .pchip{background:transparent;border:1px solid transparent;color:var(--text2);padding:8px 12px;border-radius:8px;cursor:pointer;font-size:14px;transition:all .13s;display:block;width:100%;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .pchip.active{background:var(--accent-dim);border-color:var(--accent);color:var(--accent);font-weight:600;}
 .pchip:hover:not(.active){background:var(--surface3);color:var(--text);}
+.pchip.dragging{opacity:.4;}
+.pchip.proj-over{box-shadow:inset 0 2px 0 var(--accent);}
 .dashed-btn{background:none;border:1px dashed var(--border2);color:var(--text3);padding:8px 12px;border-radius:8px;cursor:pointer;font-size:13px;font-family:'Plus Jakarta Sans',sans-serif;white-space:nowrap;margin-top:6px;transition:all .13s;display:block;width:100%;text-align:left;}
 .dashed-btn:hover{border-color:var(--accent);color:var(--accent);}
 

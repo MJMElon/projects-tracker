@@ -138,17 +138,85 @@ function toggleTimeline(){
   renderTimeline();
 }
 
+// Project ordering — per-device, stored in localStorage.
+function getProjectOrderMap(){
+  try { return JSON.parse(localStorage.getItem('pt_proj_order') || '{}'); }
+  catch(e){ return {}; }
+}
+function sortedProjects(){
+  const m = getProjectOrderMap();
+  return [...S.projects].sort((a, b) => {
+    const oa = m[a.id], ob = m[b.id];
+    const ah = typeof oa === 'number', bh = typeof ob === 'number';
+    if(ah && bh) return oa - ob;
+    if(ah) return -1;
+    if(bh) return 1;
+    return 0;
+  });
+}
+function saveProjectOrder(orderedIds){
+  const map = {};
+  orderedIds.forEach((id, i) => { map[id] = i; });
+  localStorage.setItem('pt_proj_order', JSON.stringify(map));
+}
+
 function renderProjectBar(){
   if(!S.activeProject && S.projects.length) S.activeProject = S.projects[0].id;
   const invBtn = document.getElementById('inviteBtn');
-  if(invBtn){
-    // Show the Members button whenever there's an active project — the modal
-    // will render the correct controls based on the viewer's role.
-    invBtn.style.display = S.activeProject ? '' : 'none';
-  }
+  if(invBtn) invBtn.style.display = S.activeProject ? '' : 'none';
+  const list = sortedProjects();
   document.getElementById('projectBar').innerHTML =
-    S.projects.map(p=>`<div class="pchip ${p.id===S.activeProject?'active':''}" onclick="selectProject('${p.id}')">${esc(p.name)}</div>`).join('')
+    list.map(p =>
+      `<div class="pchip ${p.id===S.activeProject?'active':''}"
+            draggable="true"
+            ondragstart="projDragStart(event,'${p.id}')"
+            ondragover="projDragOver(event)"
+            ondragleave="projDragLeave(event)"
+            ondrop="projDrop(event,'${p.id}')"
+            ondragend="projDragEnd(event)"
+            onclick="selectProject('${p.id}')">${esc(p.name)}</div>`
+    ).join('')
     +`<button class="dashed-btn" onclick="openProjectModal()">+ Project</button>`;
+}
+
+let _dragProjId = null;
+function projDragStart(e, id){
+  e.stopPropagation();
+  _dragProjId = id;
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', 'proj:' + id);
+  setTimeout(() => { const t = e.target; if(t && t.classList) t.classList.add('dragging'); }, 0);
+}
+function projDragOver(e){
+  if(!_dragProjId) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  document.querySelectorAll('.pchip.proj-over').forEach(el => el.classList.remove('proj-over'));
+  e.currentTarget.classList.add('proj-over');
+}
+function projDragLeave(e){
+  if(e.currentTarget && !e.currentTarget.contains(e.relatedTarget)){
+    e.currentTarget.classList.remove('proj-over');
+  }
+}
+function projDrop(e, targetId){
+  e.preventDefault();
+  e.currentTarget.classList.remove('proj-over');
+  if(!_dragProjId || _dragProjId === targetId){ _dragProjId = null; return; }
+  const list = sortedProjects();
+  const fromIdx = list.findIndex(p => p.id === _dragProjId);
+  const toIdx = list.findIndex(p => p.id === targetId);
+  if(fromIdx < 0 || toIdx < 0){ _dragProjId = null; return; }
+  const [moved] = list.splice(fromIdx, 1);
+  list.splice(toIdx, 0, moved);
+  saveProjectOrder(list.map(p => p.id));
+  _dragProjId = null;
+  render();
+}
+function projDragEnd(){
+  document.querySelectorAll('.pchip.dragging').forEach(el => el.classList.remove('dragging'));
+  document.querySelectorAll('.pchip.proj-over').forEach(el => el.classList.remove('proj-over'));
+  _dragProjId = null;
 }
 
 // Auto-hide threshold: tasks marked done more than 30 days ago
@@ -284,9 +352,12 @@ function renderSubCard(t,s,idx){
   const timeFmt=fmtMsCard(getSubDisplayMs(s));
   const subId=`sc-${t.id}-${idx}`;
   const subReopens=(s.history||[]).filter(h=>h.type==='reopened');
+  const nests=s.subtasks||[];
+  const nestsDone=nests.filter(n=>n.done).length;
   const r3=[];
   if(timeFmt) r3.push(`<span class="badge b-time">⏱ ${timeFmt}</span>`);
   if(subReopens.length) r3.push(`<span class="badge b-reopen">↩ ${subReopens.length}</span>`);
+  if(nests.length) r3.push(`<span class="badge b-subtask">☑ ${nestsDone}/${nests.length}</span>`);
   const subRow4=`<div class="tc-row4"><span class="assign-wrap" onclick="event.stopPropagation();openAssignPicker(event,'sub','${t.id}:${idx}')" title="Click to reassign">${USER_ICON_SVG}<span class="badge b-assign">${s.assignee?'@'+esc(s.assignee):'Unassigned'}</span></span></div>`;
   return `<div class="tcard tcard-sub u-${t.urgency}" id="${subId}" draggable="true" ondragstart="dragStartSub(event,'${t.id}',${idx})" ondragend="dragEndSub(event)" onclick="openSubtaskDetail('${t.id}',${idx})">
     <div class="tc-tick ${s.done?'checked':''}" onclick="event.stopPropagation();toggleSubtask('${t.id}',${idx})"></div>
