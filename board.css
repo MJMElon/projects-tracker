@@ -126,7 +126,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .col-add-btn:hover{border-color:var(--accent);color:var(--accent);}
 
 /* ── ADD COLUMN ── */
-.col-new{width:260px;min-width:260px;flex-shrink:0;display:flex;flex-direction:column;gap:10px;}
+.col-new{width:260px;min-width:260px;flex-shrink:0;display:flex;flex-direction:column;gap:10px;scroll-snap-align:end;}
 .col-new-inner{border:1.5px dashed var(--border2);border-radius:14px;padding:22px 18px;display:flex;flex-direction:column;align-items:center;gap:12px;cursor:pointer;transition:all .15s;}
 .col-new-inner:hover{border-color:var(--accent);background:var(--accent-dim);}
 .col-new-inner span{font-size:13px;color:var(--text3);}
@@ -483,15 +483,18 @@ body.locked{overflow:hidden;}
 
 /* ── MOBILE (≤768px) ── */
 @media(max-width:768px){
-  header{padding:10px 12px;gap:8px;}
-  .logo{font-size:20px;}
-  .hactions{gap:6px;}
-  .hamburger{display:block;}
+  header{padding:10px 10px;gap:6px;}
+  .logo{font-size:18px;}
+  .hactions{gap:4px;flex-wrap:nowrap;min-width:0;}
+  .hamburger{display:block;padding:4px 8px;font-size:20px;}
   .btn-label-lg{display:none;}
-  .btn-label-sm{display:inline;font-size:15px;}
-  .btn-sm{padding:6px 10px;font-size:13px;}
+  .btn-label-sm{display:inline;font-size:14px;}
+  .btn-sm{padding:5px 8px;font-size:12px;}
+  .hdr-icon{width:14px;height:14px;margin-right:0;}
 
-  .auth-email{max-width:110px;font-size:11px;padding:3px 8px;}
+  /* Hide the email pill on phones — signout button is enough. */
+  .auth-email{display:none;}
+  .auth-bar{flex-shrink:0;}
 
   .sidebar{position:fixed;top:0;left:0;bottom:0;width:240px;z-index:100;transform:translateX(-100%);transition:transform .22s ease;border-right:1px solid var(--border);}
   .sidebar.open{transform:translateX(0);}
@@ -525,8 +528,10 @@ body.locked{overflow:hidden;}
 /* ── NARROW MOBILE (≤420px) ── */
 @media(max-width:420px){
   :root{--col-w:86vw;}
-  .hactions .btn-sm{padding:6px 8px;}
-  .auth-email{max-width:90px;}
+  header{padding:8px 8px;gap:4px;}
+  .logo{font-size:16px;}
+  .hactions{gap:3px;}
+  .hactions .btn-sm{padding:5px 7px;font-size:12px;}
   .dash{padding:6px 8px 0;gap:5px;}
   .dash .d-card{padding:5px 6px;}
   .dash .d-num{font-size:14px;}
