@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Vibe Tracker · MJM</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="board.css?v=95">
+<link rel="stylesheet" href="board.css?v=96">
 <link rel="icon" type="image/svg+xml" href="icon.svg">
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="manifest" href="manifest.webmanifest">
@@ -204,6 +204,9 @@
     <div class="auth-actions">
       <button class="btn btn-primary" onclick="completeInviteSignup()" style="flex:1">Finish setup</button>
     </div>
+    <div style="text-align:center;margin-top:14px;font-size:13px;color:var(--text3)">
+      Already have an account? <a href="#" onclick="event.preventDefault();escapeInviteSetup()" style="color:var(--accent);text-decoration:none">Sign in instead</a>
+    </div>
   </div>
 </div>
 
@@ -359,7 +362,7 @@
 <!-- hidden file input -->
 <input type="file" id="ssInput" accept="image/*" style="display:none" multiple />
 
-<script src="board.js?v=95"></script>
-<script src="supabase.js?v=95"></script>
+<script src="board.js?v=96"></script>
+<script src="supabase.js?v=96"></script>
 </body>
 </html>

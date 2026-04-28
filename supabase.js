@@ -862,6 +862,17 @@ async function completePasswordReset(){
   }
 }
 
+// Escape hatch from the invite-setup overlay: clear the magic-link session
+// and reload to the sign-in form so a returning user can log in normally.
+function escapeInviteSetup(){
+  try {
+    Object.keys(localStorage).filter(k => k.startsWith('sb-')).forEach(k => localStorage.removeItem(k));
+  } catch(e){}
+  // Strip any leftover invite-flow markers from the URL
+  try { history.replaceState(null, '', window.location.pathname); } catch(e){}
+  location.reload();
+}
+
 // ── COMPLETE INVITE SIGNUP (called after invite link click) ─────
 function showInviteSetup(email){
   document.getElementById('setupEmail').value = email || '';
