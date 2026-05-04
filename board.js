@@ -224,6 +224,18 @@ const OLD_DONE_MS = 30 * 86400000;
 function isOldDone(t){
   return !!(t.done && t.completedAt && (Date.now() - t.completedAt) > OLD_DONE_MS);
 }
+// True if the task is scheduled to start on a future date — but only for
+// auto-generated recurring tasks. Manually-created future tasks stay visible.
+function isFutureScheduled(t){
+  if(!t || t.done || !t.startDate) return false;
+  const fromRecurrence = !!t.fromRecurrence
+    || (Array.isArray(t.history) && t.history[0]?.reason === 'recurring');
+  if(!fromRecurrence) return false;
+  const today = new Date();
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  const startMs = parseStartDate(t.startDate);
+  return typeof startMs === 'number' && startMs > todayStart;
+}
 function getOldDoneShown(){
   try { return JSON.parse(localStorage.getItem('pt_show_old_done') || '{}'); }
   catch(e){ return {}; }
@@ -255,11 +267,16 @@ function renderBoard(){
     tasks.forEach(t=>{
       // Hide old-completed tasks unless the toggle is on.
       if(isOldDone(t) && !showOld) return;
+      // Hide tasks scheduled to start on a future date (recurring or manual).
+      if(isFutureScheduled(t)) return;
       items.push({type:'task',task:t,order:typeof t.order==='number'?t.order:9999,done:t.done});
     });
     S.tasks.filter(t=>t.projectId===proj.id).forEach(t=>{
+      // If the parent task is hidden (future start), hide all its deployed subtasks too.
+      if(isFutureScheduled(t)) return;
       (t.subtasks||[]).forEach((s,si)=>{
-        if(s.phase===ph&&!s.done) items.push({type:'sub',task:t,sub:s,idx:si,order:typeof s.phaseOrder==='number'?s.phaseOrder:9999,done:false});
+        if(s.phase===ph && !s.done && !isFutureScheduled(s))
+          items.push({type:'sub',task:t,sub:s,idx:si,order:typeof s.phaseOrder==='number'?s.phaseOrder:9999,done:false});
       });
     });
     items.sort((a,b)=>{
@@ -443,6 +460,7 @@ function renderDrawer(){
         <input type="date" id="fTaskDue_${t.id}" value="${t.due||''}" onchange="saveTaskDates('${t.id}')" />
       </div>
     </div>
+    ${t.repeat && t.repeat.freq && t.repeat.freq !== 'off' ? `<div class="repeat-info">🔁 ${esc(formatRepeatInfo(t.repeat))}</div>` : ''}
   </div>`;
 
   // Subtasks
@@ -569,6 +587,7 @@ function duplicateTask(taskId){
     createdAt: now,
     screenshots: [...(src.screenshots || [])],
     subtasks: (src.subtasks || []).map(cloneSub),
+    repeat: src.repeat ? { ...src.repeat } : null,
     history: [{ type: 'created', ts: now }]
   };
   S.tasks.push(dup);
@@ -937,6 +956,65 @@ function deleteSubShot(e,taskId,idx,shotIdx){
 let _reopenId=null;
 let _reopenSubInfo=null;
 
+// Human-readable summary of a repeat rule, e.g. "Repeats weekly on Monday".
+function formatRepeatInfo(r){
+  if(!r || !r.freq || r.freq === 'off') return '';
+  const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const monthNames = _MONTH_NAMES;
+  const ord = n => {
+    const v = n % 100;
+    if(v >= 11 && v <= 13) return n + 'th';
+    switch(n % 10){ case 1: return n + 'st'; case 2: return n + 'nd'; case 3: return n + 'rd'; default: return n + 'th'; }
+  };
+  if(r.freq === 'daily') return 'Repeats daily';
+  if(r.freq === 'weekly'){
+    const wd = (typeof r.weekday === 'number') ? r.weekday : (Array.isArray(r.weekdays) && r.weekdays.length ? r.weekdays[0] : 0);
+    return 'Repeats weekly on ' + dayNames[wd];
+  }
+  if(r.freq === 'monthly') return 'Repeats monthly on the ' + ord(r.monthDay || 1);
+  if(r.freq === 'yearly'){
+    const m = (typeof r.yearMonth === 'number') ? r.yearMonth : 0;
+    return 'Repeats yearly on ' + monthNames[m] + ' ' + (r.yearDay || 1);
+  }
+  return '';
+}
+
+// Compute the next due date based on a repeat rule, starting from `from` (Date).
+function nextRepeatDate(rule, from){
+  const d = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+  if(rule.freq === 'daily') return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+  if(rule.freq === 'weekly'){
+    // Single weekday — find the next date that matches it (1–7 days out).
+    const target = (typeof rule.weekday === 'number')
+      ? rule.weekday
+      : (Array.isArray(rule.weekdays) && rule.weekdays.length ? rule.weekdays[0] : d.getDay());
+    for(let i = 1; i <= 7; i++){
+      const next = new Date(d.getFullYear(), d.getMonth(), d.getDate() + i);
+      if(next.getDay() === target) return next;
+    }
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 7);
+  }
+  if(rule.freq === 'monthly'){
+    // Find the next occurrence of `monthDay`. If today is that day or past
+    // it for the current month, jump to next month. Clamp to month length.
+    const targetDay = Math.min(Math.max(rule.monthDay || d.getDate(), 1), 31);
+    let y = d.getFullYear(), m = d.getMonth();
+    if(d.getDate() >= targetDay){ m += 1; if(m > 11){ m = 0; y += 1; } }
+    const lastDayOfMonth = new Date(y, m + 1, 0).getDate();
+    return new Date(y, m, Math.min(targetDay, lastDayOfMonth));
+  }
+  if(rule.freq === 'yearly'){
+    const tm = (typeof rule.yearMonth === 'number') ? rule.yearMonth : d.getMonth();
+    const td = Math.min(Math.max(rule.yearDay || d.getDate(), 1), 31);
+    let y = d.getFullYear();
+    const candidate = new Date(y, tm, td);
+    if(candidate.getTime() <= d.getTime()) y += 1;
+    const lastDayOfMonth = new Date(y, tm + 1, 0).getDate();
+    return new Date(y, tm, Math.min(td, lastDayOfMonth));
+  }
+  return d;
+}
+
 function handleCheck(id){
   const t=S.tasks.find(t=>t.id===id); if(!t) return;
   if(!t.done){
@@ -945,6 +1023,57 @@ function handleCheck(id){
     if(!t.history) t.history=[];
     t.history.push({type:'completed',ts:now,elapsed:t.startedAt?now-t.startedAt:null,prevStart:t.startedAt||null});
     t.startedAt=null;
+    // If this task has a repeat rule, also create the next recurring instance
+    // (separate task) with start+due set to the next occurrence.
+    if(t.repeat && t.repeat.freq && t.repeat.freq !== 'off'){
+      const next = nextRepeatDate(t.repeat, new Date());
+      const nextStr = tsToDateInput(next.getTime());
+      function cloneNested(n){
+        return {
+          id: uid(), title: n.title, desc: n.desc || '', assignee: n.assignee || null,
+          done: false, completedAt: null,
+          startedAt: next.getTime(), createdAt: now,
+          startDate: nextStr, due: n.due || '', elapsed: 0,
+          screenshots: [...(n.screenshots || [])],
+          fromRecurrence: true,
+          history: [{ type: 'created', ts: now, reason: 'recurring' }]
+        };
+      }
+      function cloneSub(s){
+        return {
+          id: uid(), title: s.title, desc: s.desc || '', assignee: s.assignee || null,
+          done: false, completedAt: null,
+          startedAt: next.getTime(), createdAt: now,
+          startDate: nextStr, due: s.due || '', elapsed: 0,
+          phase: s.phase || null,
+          screenshots: [...(s.screenshots || [])],
+          subtasks: (s.subtasks || []).map(cloneNested),
+          fromRecurrence: true,
+          history: [{ type: 'created', ts: now, reason: 'recurring' }]
+        };
+      }
+      const newTask = {
+        id: uid(),
+        projectId: t.projectId,
+        title: t.title,
+        desc: t.desc || '',
+        phase: t.phase,
+        urgency: t.urgency,
+        assignee: t.assignee || '',
+        due: nextStr,
+        startDate: nextStr,
+        done: false, completedAt: null,
+        startedAt: next.getTime(), createdAt: now,
+        screenshots: [...(t.screenshots || [])],
+        subtasks: (t.subtasks || []).map(cloneSub),
+        repeat: { ...t.repeat },
+        fromRecurrence: true,
+        history: [{ type: 'created', ts: now, reason: 'recurring' }]
+      };
+      S.tasks.push(newTask);
+      // The completed task no longer needs a repeat rule (it's the "done" historical instance)
+      t.repeat = null;
+    }
     // Cascade: complete any ongoing subtasks AND their nested subtasks.
     // (Reopening the parent later does NOT reopen these.)
     (t.subtasks||[]).forEach(s=>{
@@ -1057,6 +1186,76 @@ function buildAssigneeOptions(selected){
   return opts.join('');
 }
 
+const _MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+function _populateRepeatDropdowns(){
+  const monthDay = document.getElementById('fRepeatMonthDay');
+  if(monthDay && !monthDay.options.length){
+    let html = '';
+    for(let i = 1; i <= 31; i++) html += `<option value="${i}">${i}</option>`;
+    monthDay.innerHTML = html;
+  }
+  const yearMonth = document.getElementById('fRepeatYearMonth');
+  if(yearMonth && !yearMonth.options.length){
+    yearMonth.innerHTML = _MONTH_NAMES.map((n,i) => `<option value="${i}">${n}</option>`).join('');
+  }
+  const yearDay = document.getElementById('fRepeatYearDay');
+  if(yearDay && !yearDay.options.length){
+    let html = '';
+    for(let i = 1; i <= 31; i++) html += `<option value="${i}">${i}</option>`;
+    yearDay.innerHTML = html;
+  }
+}
+
+function loadRepeatIntoForm(repeat){
+  _populateRepeatDropdowns();
+  const freqSel = document.getElementById('fRepeatFreq');
+  const r = repeat || { freq: 'off' };
+  if(freqSel) freqSel.value = r.freq || 'off';
+  // Weekly: single weekday radio (default to today's weekday)
+  const wdRow = document.getElementById('fRepeatWeekdaysRow');
+  if(wdRow){
+    wdRow.style.display = (r.freq === 'weekly') ? '' : 'none';
+    let chosen = (typeof r.weekday === 'number') ? r.weekday
+              : (Array.isArray(r.weekdays) && r.weekdays.length ? r.weekdays[0] : null);
+    if(chosen === null) chosen = new Date().getDay();
+    wdRow.querySelectorAll('input[type="radio"]').forEach(rb => {
+      rb.checked = parseInt(rb.dataset.d, 10) === chosen;
+    });
+  }
+  // Monthly: day of month
+  const today = new Date();
+  document.getElementById('fRepeatMonthlyRow').style.display = (r.freq === 'monthly') ? '' : 'none';
+  document.getElementById('fRepeatMonthDay').value = String(r.monthDay || today.getDate());
+  // Yearly: month + day
+  document.getElementById('fRepeatYearlyRow').style.display = (r.freq === 'yearly') ? '' : 'none';
+  document.getElementById('fRepeatYearMonth').value = String(typeof r.yearMonth === 'number' ? r.yearMonth : today.getMonth());
+  document.getElementById('fRepeatYearDay').value = String(r.yearDay || today.getDate());
+}
+
+function readRepeatFromForm(){
+  const freq = document.getElementById('fRepeatFreq')?.value || 'off';
+  if(freq === 'off') return { freq: 'off' };
+  const out = { freq };
+  if(freq === 'weekly'){
+    const sel = document.querySelector('#fRepeatWeekdaysRow input[type="radio"]:checked');
+    out.weekday = sel ? parseInt(sel.dataset.d, 10) : new Date().getDay();
+  } else if(freq === 'monthly'){
+    out.monthDay = parseInt(document.getElementById('fRepeatMonthDay').value, 10) || 1;
+  } else if(freq === 'yearly'){
+    out.yearMonth = parseInt(document.getElementById('fRepeatYearMonth').value, 10) || 0;
+    out.yearDay = parseInt(document.getElementById('fRepeatYearDay').value, 10) || 1;
+  }
+  return out;
+}
+
+function onRepeatFreqChange(){
+  const freq = document.getElementById('fRepeatFreq').value;
+  document.getElementById('fRepeatWeekdaysRow').style.display = freq === 'weekly' ? '' : 'none';
+  document.getElementById('fRepeatMonthlyRow').style.display = freq === 'monthly' ? '' : 'none';
+  document.getElementById('fRepeatYearlyRow').style.display = freq === 'yearly' ? '' : 'none';
+}
+
 function openAddTask(ph){
   _editId=null;
   document.getElementById('mTitle').textContent='New Task';
@@ -1066,6 +1265,7 @@ function openAddTask(ph){
   const phases=getPhases();
   document.getElementById('fPhase').innerHTML=phases.map(p=>`<option value="${esc(p)}" ${p===(ph||phases[0])?'selected':''}>${esc(p)}</option>`).join('');
   document.getElementById('fAssignee').innerHTML=buildAssigneeOptions('');
+  loadRepeatIntoForm(null);
   document.getElementById('taskModal').classList.add('open');
   setTimeout(()=>document.getElementById('fTitle').focus(),300);
 }
@@ -1082,6 +1282,7 @@ function openEditTask(id){
   const phases=getPhases();
   document.getElementById('fPhase').innerHTML=phases.map(p=>`<option value="${esc(p)}" ${p===t.phase?'selected':''}>${esc(p)}</option>`).join('');
   document.getElementById('fAssignee').innerHTML=buildAssigneeOptions(t.assignee||'');
+  loadRepeatIntoForm(t.repeat);
   document.getElementById('taskModal').classList.add('open');
 }
 
@@ -1095,6 +1296,7 @@ function saveTask(){
     assignee:document.getElementById('fAssignee').value.trim(),
     due:document.getElementById('fDue').value,
     startDate:document.getElementById('fStartDate').value,
+    repeat:readRepeatFromForm(),
     projectId:S.activeProject
   };
   if(_editId){

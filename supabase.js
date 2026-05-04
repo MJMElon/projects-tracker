@@ -46,7 +46,8 @@ function taskToRow(t, userId){
     subtasks: t.subtasks || [],
     history: t.history || [],
     created_at: t.createdAt || Date.now(),
-    order_idx: (typeof t.order === 'number') ? t.order : null
+    order_idx: (typeof t.order === 'number') ? t.order : null,
+    repeat: t.repeat || null
   };
 }
 function rowToTask(r){
@@ -67,7 +68,8 @@ function rowToTask(r){
     subtasks: r.subtasks || [],
     history: r.history || [],
     createdAt: r.created_at,
-    order: (typeof r.order_idx === 'number') ? r.order_idx : undefined
+    order: (typeof r.order_idx === 'number') ? r.order_idx : undefined,
+    repeat: r.repeat || null
   };
 }
 function projectToRow(p, userId){

@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Vibe Tracker · MJM</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="board.css?v=96">
+<link rel="stylesheet" href="board.css?v=106">
 <link rel="icon" type="image/svg+xml" href="icon.svg">
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="manifest" href="manifest.webmanifest">
@@ -116,6 +116,41 @@
     <div class="frow">
       <div class="field"><label>Start Date</label><input type="date" id="fStartDate" /></div>
       <div class="field"><label>Due Date</label><input type="date" id="fDue" /></div>
+    </div>
+    <div class="field">
+      <label>Repeat</label>
+      <div class="repeat-box">
+        <select id="fRepeatFreq" onchange="onRepeatFreqChange()" class="repeat-freq">
+          <option value="off">Off</option>
+          <option value="daily">Daily</option>
+          <option value="weekly">Weekly</option>
+          <option value="monthly">Monthly</option>
+          <option value="yearly">Yearly</option>
+        </select>
+        <div id="fRepeatWeekdaysRow" class="repeat-extra" style="display:none">
+          <div class="repeat-extra-label">On this day</div>
+          <div class="weekday-chips">
+            <label><input type="radio" name="fRepeatWeekday" data-d="0"/><span>S</span></label>
+            <label><input type="radio" name="fRepeatWeekday" data-d="1"/><span>M</span></label>
+            <label><input type="radio" name="fRepeatWeekday" data-d="2"/><span>T</span></label>
+            <label><input type="radio" name="fRepeatWeekday" data-d="3"/><span>W</span></label>
+            <label><input type="radio" name="fRepeatWeekday" data-d="4"/><span>T</span></label>
+            <label><input type="radio" name="fRepeatWeekday" data-d="5"/><span>F</span></label>
+            <label><input type="radio" name="fRepeatWeekday" data-d="6"/><span>S</span></label>
+          </div>
+        </div>
+        <div id="fRepeatMonthlyRow" class="repeat-extra" style="display:none">
+          <div class="repeat-extra-label">Day of month</div>
+          <select id="fRepeatMonthDay"></select>
+        </div>
+        <div id="fRepeatYearlyRow" class="repeat-extra" style="display:none">
+          <div class="repeat-extra-label">Month &amp; day</div>
+          <div class="repeat-yearly-row">
+            <select id="fRepeatYearMonth"></select>
+            <select id="fRepeatYearDay"></select>
+          </div>
+        </div>
+      </div>
     </div>
     <div class="frow">
       <div class="field"><label>Assign To</label><select id="fAssignee"><option value="">— Unassigned —</option></select></div>
@@ -362,7 +397,7 @@
 <!-- hidden file input -->
 <input type="file" id="ssInput" accept="image/*" style="display:none" multiple />
 
-<script src="board.js?v=96"></script>
-<script src="supabase.js?v=96"></script>
+<script src="board.js?v=106"></script>
+<script src="supabase.js?v=106"></script>
 </body>
 </html>

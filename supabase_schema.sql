@@ -81,8 +81,9 @@ create table if not exists project_tracker.tasks (
   order_idx    integer                               -- manual drag order within phase (nullable = unset)
 );
 create index if not exists tasks_project_idx on project_tracker.tasks(project_id);
--- ensure column exists even if table was created before this was added
+-- ensure columns exist even if table was created before they were added
 alter table project_tracker.tasks add column if not exists order_idx integer;
+alter table project_tracker.tasks add column if not exists repeat jsonb;
 
 create or replace function project_tracker.touch_updated_at() returns trigger as $$
 begin new.updated_at := now(); return new; end; $$ language plpgsql;
