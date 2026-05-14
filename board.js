@@ -352,7 +352,7 @@ function renderCard(t){
   const row3=r3.length?`<div class="tc-row3">${r3.join('')}</div>`:'';
 
   // Row 4: assignee
-  const row4=`<div class="tc-row4"><span class="assign-wrap" onclick="event.stopPropagation();openAssignPicker(event,'task','${t.id}')" title="Click to reassign">${USER_ICON_SVG}<span class="badge b-assign">${t.assignee?'@'+esc(t.assignee):'Unassigned'}</span></span></div>`;
+  const row4=`<div class="tc-row4"><span class="assign-wrap ${t.assignee?'':'unassigned'}" onclick="event.stopPropagation();openAssignPicker(event,'task','${t.id}')" title="Click to reassign">${USER_ICON_SVG}<span class="badge b-assign">${t.assignee?'@'+esc(t.assignee):'Unassigned'}</span></span></div>`;
 
   const imgs=t.screenshots?.slice(0,2).map(s=>`<img class="tc-img" src="${shotUrl(s)}" />`).join('')||'';
 
@@ -375,7 +375,7 @@ function renderSubCard(t,s,idx){
   if(timeFmt) r3.push(`<span class="badge b-time">⏱ ${timeFmt}</span>`);
   if(subReopens.length) r3.push(`<span class="badge b-reopen">↩ ${subReopens.length}</span>`);
   if(nests.length) r3.push(`<span class="badge b-subtask">☑ ${nestsDone}/${nests.length}</span>`);
-  const subRow4=`<div class="tc-row4"><span class="assign-wrap" onclick="event.stopPropagation();openAssignPicker(event,'sub','${t.id}:${idx}')" title="Click to reassign">${USER_ICON_SVG}<span class="badge b-assign">${s.assignee?'@'+esc(s.assignee):'Unassigned'}</span></span></div>`;
+  const subRow4=`<div class="tc-row4"><span class="assign-wrap ${s.assignee?'':'unassigned'}" onclick="event.stopPropagation();openAssignPicker(event,'sub','${t.id}:${idx}')" title="Click to reassign">${USER_ICON_SVG}<span class="badge b-assign">${s.assignee?'@'+esc(s.assignee):'Unassigned'}</span></span></div>`;
   return `<div class="tcard tcard-sub u-${t.urgency}" id="${subId}" draggable="true" ondragstart="dragStartSub(event,'${t.id}',${idx})" ondragend="dragEndSub(event)" onclick="openSubtaskDetail('${t.id}',${idx})">
     <div class="tc-tick ${s.done?'checked':''}" onclick="event.stopPropagation();toggleSubtask('${t.id}',${idx})"></div>
     <div class="tc-content">
@@ -483,7 +483,7 @@ function renderDrawer(){
           ${s.phase&&!s.done?`<div class="st-phase">📌 Deployed to ${esc(s.phase)}</div>`:''}
         </div>
         ${stReopens?`<div class="st-reopen">↩ ${stReopens}</div>`:''}
-        ${s.assignee?`<span class="assign-wrap">${USER_ICON_SVG}<span class="st-assign">@${esc(s.assignee)}</span></span>`:''}
+        <span class="assign-wrap ${s.assignee?'':'unassigned'}" onclick="event.stopPropagation();openAssignPicker(event,'sub','${t.id}:${i}')" title="Click to reassign">${USER_ICON_SVG}<span class="st-assign">${s.assignee?'@'+esc(s.assignee):'Unassigned'}</span></span>
         ${subTimeFmt?`<div class="st-time">⏱ ${subTimeFmt}</div>`:''}
         <button class="st-del" onclick="event.stopPropagation();deleteSubtask('${t.id}',${i})">✕</button>
       </div>`;
@@ -831,7 +831,7 @@ function renderSubtaskDrawer(){
       <div class="subtask-row" onclick="openNestedDetail(${ni})">
         <div class="st-check ${n.done?'checked':''}" onclick="event.stopPropagation();toggleNestedSubtask('${t.id}',${_drawerSubIdx},${ni})"></div>
         <div class="st-info"><div class="st-title ${n.done?'done':''}">${esc(n.title)}</div></div>
-        ${n.assignee?`<span class="assign-wrap">${USER_ICON_SVG}<span class="st-assign">@${esc(n.assignee)}</span></span>`:''}
+        <span class="assign-wrap ${n.assignee?'':'unassigned'}" onclick="event.stopPropagation();openAssignPicker(event,'nest','${t.id}:${_drawerSubIdx}:${ni}')" title="Click to reassign">${USER_ICON_SVG}<span class="st-assign">${n.assignee?'@'+esc(n.assignee):'Unassigned'}</span></span>
         <button class="st-del" onclick="event.stopPropagation();deleteNestedSubtask('${t.id}',${_drawerSubIdx},${ni})">✕</button>
       </div>`).join('')+`</div>`;
   }
@@ -1140,7 +1140,11 @@ function openAssignPicker(e, kind, ref){
   const names = members.map(m => m.display_name);
   const cur = (kind === 'task')
     ? (S.tasks.find(t => t.id === ref)?.assignee || '')
-    : (() => {
+    : (kind === 'nest') ? (() => {
+        const [tid, six, nix] = ref.split(':');
+        const t = S.tasks.find(t => t.id === tid);
+        return t?.subtasks?.[+six]?.subtasks?.[+nix]?.assignee || '';
+      })() : (() => {
         const [tid, ix] = ref.split(':');
         const t = S.tasks.find(t => t.id === tid);
         return t?.subtasks?.[+ix]?.assignee || '';
@@ -1165,6 +1169,11 @@ function pickAssignee(kind, ref, name){
   if(kind === 'task'){
     const t = S.tasks.find(t => t.id === ref);
     if(t){ t.assignee = name; save(); render(); if(_drawerId === t.id) renderDrawer(); }
+  } else if(kind === 'nest'){
+    const [tid, six, nix] = ref.split(':');
+    const t = S.tasks.find(t => t.id === tid);
+    const n = t?.subtasks?.[+six]?.subtasks?.[+nix];
+    if(n){ n.assignee = name; save(); render(); if(_drawerId === tid) renderDrawer(); }
   } else {
     const [tid, ix] = ref.split(':');
     const t = S.tasks.find(t => t.id === tid);
