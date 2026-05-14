@@ -219,6 +219,15 @@ function projDragEnd(){
   _dragProjId = null;
 }
 
+// Returns a small {id, name} stamp describing who's performing the action right now.
+function currentActor(){
+  const id = (typeof _user !== 'undefined' && _user) ? _user.id : null;
+  const name = (typeof getMyDisplayName === 'function')
+    ? getMyDisplayName()
+    : ((typeof _user !== 'undefined' && _user) ? (_user.user_metadata?.full_name || _user.user_metadata?.name || _user.email) : '');
+  return { id, name: name || '' };
+}
+
 // Auto-hide threshold: tasks marked done more than 30 days ago
 const OLD_DONE_MS = 30 * 86400000;
 function isOldDone(t){
@@ -514,9 +523,10 @@ function renderDrawer(){
   if(t.history?.length){
     const entries=[...t.history].reverse();
     const histHtml=entries.map(h=>{
-      if(h.type==='created') return `<div class="h-entry"><div class="h-dot created"></div><div class="h-info"><div class="h-label">Task created</div><div class="h-time">${fmtTs(h.ts)}</div></div></div>`;
-      if(h.type==='completed') return `<div class="h-entry"><div class="h-dot completed"></div><div class="h-info"><div class="h-label">Marked done${h.elapsed&&fmtMs(h.elapsed)?` · <span style="color:var(--accent)">${fmtMs(h.elapsed)}</span>`:''}</div><div class="h-time">${fmtTs(h.ts)}</div></div></div>`;
-      if(h.type==='reopened') return `<div class="h-entry"><div class="h-dot reopened"></div><div class="h-info"><div class="h-label">Reopened</div><div class="h-time">${fmtTs(h.ts)}</div>${h.reason?`<div class="h-reason">"${esc(h.reason)}"</div>`:''}</div></div>`;
+      const byTxt = h.by?.name ? ` <span class="h-by">by ${esc(h.by.name)}</span>` : '';
+      if(h.type==='created') return `<div class="h-entry"><div class="h-dot created"></div><div class="h-info"><div class="h-label">Task created${byTxt}</div><div class="h-time">${fmtTs(h.ts)}</div></div></div>`;
+      if(h.type==='completed') return `<div class="h-entry"><div class="h-dot completed"></div><div class="h-info"><div class="h-label">Marked done${byTxt}${h.elapsed&&fmtMs(h.elapsed)?` · <span style="color:var(--accent)">${fmtMs(h.elapsed)}</span>`:''}</div><div class="h-time">${fmtTs(h.ts)}</div></div></div>`;
+      if(h.type==='reopened') return `<div class="h-entry"><div class="h-dot reopened"></div><div class="h-info"><div class="h-label">Reopened${byTxt}</div><div class="h-time">${fmtTs(h.ts)}</div>${h.reason?`<div class="h-reason">"${esc(h.reason)}"</div>`:''}</div></div>`;
       return '';
     }).join('');
     body+=`<div class="d-section"><div class="d-section-label">Activity</div><div class="h-list">${histHtml}</div></div>`;
@@ -551,7 +561,7 @@ function duplicateTask(taskId){
       startDate, due: n.due || '',
       elapsed: 0,
       screenshots: [...(n.screenshots || [])],
-      history: [{ type: 'created', ts: now }]
+      history: [{ type: 'created', ts: now, by: currentActor() }]
     };
   }
   function cloneSub(s){
@@ -567,7 +577,7 @@ function duplicateTask(taskId){
       phase: s.phase || null,
       screenshots: [...(s.screenshots || [])],
       subtasks: (s.subtasks || []).map(cloneNested),
-      history: [{ type: 'created', ts: now }]
+      history: [{ type: 'created', ts: now, by: currentActor() }]
     };
   }
 
@@ -588,7 +598,7 @@ function duplicateTask(taskId){
     screenshots: [...(src.screenshots || [])],
     subtasks: (src.subtasks || []).map(cloneSub),
     repeat: src.repeat ? { ...src.repeat } : null,
-    history: [{ type: 'created', ts: now }]
+    history: [{ type: 'created', ts: now, by: currentActor() }]
   };
   S.tasks.push(dup);
   save();
@@ -860,9 +870,10 @@ function renderSubtaskDrawer(){
 
   if(s.history.length){
     const histHtml=[...s.history].reverse().map(h=>{
-      if(h.type==='created') return `<div class="h-entry"><div class="h-dot created"></div><div class="h-info"><div class="h-label">Subtask created</div><div class="h-time">${fmtTs(h.ts)}</div></div></div>`;
-      if(h.type==='completed') return `<div class="h-entry"><div class="h-dot completed"></div><div class="h-info"><div class="h-label">Marked done${h.elapsed&&fmtMsSub(h.elapsed)?` · <span style="color:var(--accent)">${fmtMsSub(h.elapsed)}</span>`:''}</div><div class="h-time">${fmtTs(h.ts)}</div></div></div>`;
-      if(h.type==='reopened') return `<div class="h-entry"><div class="h-dot reopened"></div><div class="h-info"><div class="h-label">Reopened</div><div class="h-time">${fmtTs(h.ts)}</div>${h.reason?`<div class="h-reason">"${esc(h.reason)}"</div>`:''}</div></div>`;
+      const byTxt = h.by?.name ? ` <span class="h-by">by ${esc(h.by.name)}</span>` : '';
+      if(h.type==='created') return `<div class="h-entry"><div class="h-dot created"></div><div class="h-info"><div class="h-label">Subtask created${byTxt}</div><div class="h-time">${fmtTs(h.ts)}</div></div></div>`;
+      if(h.type==='completed') return `<div class="h-entry"><div class="h-dot completed"></div><div class="h-info"><div class="h-label">Marked done${byTxt}${h.elapsed&&fmtMsSub(h.elapsed)?` · <span style="color:var(--accent)">${fmtMsSub(h.elapsed)}</span>`:''}</div><div class="h-time">${fmtTs(h.ts)}</div></div></div>`;
+      if(h.type==='reopened') return `<div class="h-entry"><div class="h-dot reopened"></div><div class="h-info"><div class="h-label">Reopened${byTxt}</div><div class="h-time">${fmtTs(h.ts)}</div>${h.reason?`<div class="h-reason">"${esc(h.reason)}"</div>`:''}</div></div>`;
       return '';
     }).join('');
     body+=`<div class="d-section"><div class="d-section-label">Activity</div><div class="h-list">${histHtml}</div></div>`;
@@ -1021,7 +1032,7 @@ function handleCheck(id){
     const now=Date.now();
     t.done=true; t.completedAt=now;
     if(!t.history) t.history=[];
-    t.history.push({type:'completed',ts:now,elapsed:t.startedAt?now-t.startedAt:null,prevStart:t.startedAt||null});
+    t.history.push({type:'completed',ts:now,by:currentActor(),elapsed:t.startedAt?now-t.startedAt:null,prevStart:t.startedAt||null});
     t.startedAt=null;
     // If this task has a repeat rule, also create the next recurring instance
     // (separate task) with start+due set to the next occurrence.
@@ -1036,7 +1047,7 @@ function handleCheck(id){
           startDate: nextStr, due: n.due || '', elapsed: 0,
           screenshots: [...(n.screenshots || [])],
           fromRecurrence: true,
-          history: [{ type: 'created', ts: now, reason: 'recurring' }]
+          history: [{ type: 'created', ts: now, reason: 'recurring', by: currentActor() }]
         };
       }
       function cloneSub(s){
@@ -1049,7 +1060,7 @@ function handleCheck(id){
           screenshots: [...(s.screenshots || [])],
           subtasks: (s.subtasks || []).map(cloneNested),
           fromRecurrence: true,
-          history: [{ type: 'created', ts: now, reason: 'recurring' }]
+          history: [{ type: 'created', ts: now, reason: 'recurring', by: currentActor() }]
         };
       }
       const newTask = {
@@ -1068,7 +1079,7 @@ function handleCheck(id){
         subtasks: (t.subtasks || []).map(cloneSub),
         repeat: { ...t.repeat },
         fromRecurrence: true,
-        history: [{ type: 'created', ts: now, reason: 'recurring' }]
+        history: [{ type: 'created', ts: now, reason: 'recurring', by: currentActor() }]
       };
       S.tasks.push(newTask);
       // The completed task no longer needs a repeat rule (it's the "done" historical instance)
@@ -1083,7 +1094,7 @@ function handleCheck(id){
         s.elapsed=(s.elapsed||0)+(started?now-started:0);
         s.startedAt=null;
         if(!s.history) s.history=[{type:'created',ts:s.createdAt||now}];
-        s.history.push({type:'completed',ts:now,elapsed:s.elapsed,reason:'parent task completed'});
+        s.history.push({type:'completed',ts:now,by:currentActor(),elapsed:s.elapsed,reason:'parent task completed'});
       }
       (s.subtasks||[]).forEach(n=>{
         if(!n.done){
@@ -1092,7 +1103,7 @@ function handleCheck(id){
           n.elapsed=(n.elapsed||0)+(ns?now-ns:0);
           n.startedAt=null;
           if(!n.history) n.history=[{type:'created',ts:n.createdAt||now}];
-          n.history.push({type:'completed',ts:now,elapsed:n.elapsed,reason:'parent task completed'});
+          n.history.push({type:'completed',ts:now,by:currentActor(),elapsed:n.elapsed,reason:'parent task completed'});
         }
       });
     });
@@ -1114,13 +1125,13 @@ function confirmReopen(){
     const s=t.subtasks[idx];
     s.done=false; s.completedAt=null; s.startedAt=now;
     if(!s.history) s.history=[{type:'created',ts:s.createdAt||now}];
-    s.history.push({type:'reopened',ts:now,reason:reason||null});
+    s.history.push({type:'reopened',ts:now,by:currentActor(),reason:reason||null});
     save(); closeReopenModal(); render(); if(_drawerId===taskId) renderDrawer();
   } else if(_reopenId){
     const t=S.tasks.find(t=>t.id===_reopenId); if(!t){closeReopenModal();return;}
     t.done=false; t.completedAt=null; t.startedAt=now;
     if(!t.history) t.history=[];
-    t.history.push({type:'reopened',ts:now,reason:reason||null});
+    t.history.push({type:'reopened',ts:now,by:currentActor(),reason:reason||null});
     save(); closeReopenModal(); render(); if(_drawerId===_reopenId) renderDrawer();
   }
 }
@@ -1312,7 +1323,7 @@ function saveTask(){
     const t=S.tasks.find(t=>t.id===_editId); if(t) Object.assign(t,data);
   } else {
     const now=Date.now();
-    S.tasks.push({id:uid(),done:false,createdAt:now,startedAt:now,screenshots:[],subtasks:[],history:[{type:'created',ts:now}],...data});
+    S.tasks.push({id:uid(),done:false,createdAt:now,startedAt:now,screenshots:[],subtasks:[],history:[{type:'created',ts:now,by:currentActor()}],...data});
   }
   save(); closeTaskModal(); render(); if(_drawerId&&_editId===_drawerId) renderDrawer();
 }
@@ -1439,7 +1450,7 @@ function addSubtask(taskId){
   const t=S.tasks.find(t=>t.id===taskId); if(!t) return;
   if(!t.subtasks) t.subtasks=[];
   const _ts=Date.now();
-  t.subtasks.push({id:uid(),title,assignee:assignee||null,done:false,startDate:tsToDateInput(_ts),createdAt:_ts,startedAt:_ts,elapsed:0,desc:'',screenshots:[],history:[{type:'created',ts:_ts}]});
+  t.subtasks.push({id:uid(),title,assignee:assignee||null,done:false,startDate:tsToDateInput(_ts),createdAt:_ts,startedAt:_ts,elapsed:0,desc:'',screenshots:[],history:[{type:'created',ts:_ts,by:currentActor()}]});
   save(); renderDrawer(); render();
 }
 
@@ -1452,7 +1463,7 @@ function toggleSubtask(taskId,idx){
     s.elapsed=(s.elapsed||0)+(started?now-started:0);
     s.startedAt=null;
     if(!s.history) s.history=[{type:'created',ts:s.createdAt||now}];
-    s.history.push({type:'completed',ts:now,elapsed:s.elapsed});
+    s.history.push({type:'completed',ts:now,by:currentActor(),elapsed:s.elapsed});
     // Cascade: complete any open nested subtasks
     (s.subtasks||[]).forEach(n=>{
       if(!n.done){
@@ -1461,7 +1472,7 @@ function toggleSubtask(taskId,idx){
         n.elapsed=(n.elapsed||0)+(ns?now-ns:0);
         n.startedAt=null;
         if(!n.history) n.history=[{type:'created',ts:n.createdAt||now}];
-        n.history.push({type:'completed',ts:now,elapsed:n.elapsed,reason:'parent subtask completed'});
+        n.history.push({type:'completed',ts:now,by:currentActor(),elapsed:n.elapsed,reason:'parent subtask completed'});
       }
     });
     save(); renderDrawer(); render();
@@ -1487,7 +1498,7 @@ function addNestedSubtask(taskId, subIdx){
     id: uid(), title, assignee: assignee || null,
     done: false, startDate: tsToDateInput(now), startedAt: now, createdAt: now, elapsed: 0,
     desc: '', screenshots: [],
-    history: [{type:'created', ts: now}]
+    history: [{type:'created', ts: now, by: currentActor()}]
   });
   if(inp) inp.value = '';
   save(); renderDrawer();
@@ -1503,11 +1514,11 @@ function toggleNestedSubtask(taskId, subIdx, nestIdx){
     n.elapsed = (n.elapsed||0) + (started ? now - started : 0);
     n.startedAt = null;
     if(!n.history) n.history = [{type:'created', ts: n.createdAt || now}];
-    n.history.push({type:'completed', ts: now, elapsed: n.elapsed});
+    n.history.push({type:'completed', ts: now, by: currentActor(), elapsed: n.elapsed});
   } else {
     n.done = false; n.completedAt = null; n.startedAt = now;
     if(!n.history) n.history = [{type:'created', ts: n.createdAt || now}];
-    n.history.push({type:'reopened', ts: now});
+    n.history.push({type:'reopened', ts: now, by: currentActor()});
   }
   save(); renderDrawer(); render();
 }
