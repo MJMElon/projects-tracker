@@ -92,6 +92,15 @@ function parseStartDate(s){
 function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 const COL_COLORS=['c0','c1','c2','c3','c4','c5','c6','c7','c8'];
+// Ethereum-style faceted 3D diamond — pure white with varying opacity per facet.
+const ETH_DIAMOND_SVG = `<svg class="col-eth" viewBox="0 0 256 417" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <path d="M127.961 0L125.166 9.5v275.668l2.795 2.79 127.962-75.638z" fill="#fff" fill-opacity="0.95"/>
+  <path d="M127.962 0L0 212.32l127.962 75.639V154.158z" fill="#fff" fill-opacity="0.55"/>
+  <path d="M127.961 312.187l-1.575 1.92v98.199l1.575 4.6L256 236.587z" fill="#fff" fill-opacity="0.85"/>
+  <path d="M127.962 416.905v-104.72L0 236.585z" fill="#fff" fill-opacity="0.35"/>
+  <path d="M127.961 287.958l127.962-75.637-127.962-58.162z" fill="#fff" fill-opacity="0.7"/>
+  <path d="M0 212.32l127.96 75.638v-133.8z" fill="#fff" fill-opacity="0.45"/>
+</svg>`;
 // Shared user icon — solid silhouette in currentColor (light grey via .assign-wrap)
 const USER_ICON_SVG = `<svg class="assign-icon" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8H4z"/></svg>`;
 function colColor(i){ return COL_COLORS[i%COL_COLORS.length]; }
@@ -304,7 +313,7 @@ function renderBoard(){
       : '';
     return `<div class="col" data-ph="${esc(ph)}" draggable="true" ondragstart="colDragStart(event,'${esc(ph)}')" ondragend="colDragEnd(event)" ondragover="colDragOver(event)" ondragleave="colDragLeave(event)" ondrop="colDrop(event,'${esc(ph)}')">
       <div class="col-head">
-        <div class="col-dot ${cc}"></div>
+        <div class="col-dot">${ETH_DIAMOND_SVG}</div>
         <div class="col-title">${esc(ph)}</div>
         <div class="col-count">${doneN}/${tasks.length}</div>
         <button class="col-menu-btn" onclick="openColCtx(event,'${esc(ph)}')">⋯</button>
@@ -346,11 +355,13 @@ function renderCard(t){
   // Row 1: title + urgency badge
   const row1=`<div class="tc-row1">
     <div class="tc-title">${esc(t.title)}</div>
-    <span class="badge b-${t.urgency} tc-urgency">${urgencyLabel(t.urgency)}</span>
   </div>`;
 
-  // Row 2: due date
-  const row2=t.due?`<div class="tc-row2"><span class="badge ${isOverdue(t)?'b-overdue':'b-meta'}">DUE ${fmtDate(t.due)}${isOverdue(t)?' ⚠':''}</span></div>`:'';
+  // Row 2: urgency + due date (same line)
+  const row2=`<div class="tc-row2">
+    <span class="badge b-${t.urgency} tc-urgency">${urgencyLabel(t.urgency)}</span>
+    ${t.due?`<span class="badge ${isOverdue(t)?'b-overdue':'b-meta'}">DUE ${fmtDate(t.due)}${isOverdue(t)?' ⚠':''}</span>`:''}
+  </div>`;
 
   // Row 3: done, duration, reopens, subtasks progress
   const r3=[];
