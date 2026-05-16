@@ -152,9 +152,21 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
   from { background-position: 0 0; }
   to   { background-position: 380px -200px; }
 }
-/* Light theme: invert the white stars to dark so they show on white bg */
-:root[data-theme="light"] .board-wrap::before,
-:root[data-theme="light"] .board-wrap::after{ filter:invert(1); opacity:.35; }
+/* Light theme: invert white stars to black + apply a black shimmer so they read as "shiny" against the pale bg.
+   The base ::before/::after animation re-sets `filter` each frame, so we override the animation with
+   light-mode-specific keyframes that include invert(1) — otherwise the invert is lost mid-animation. */
+:root[data-theme="light"] .board-wrap::before{
+  animation: starsDriftA 140s linear infinite, starsTwinkleLight 4s ease-in-out infinite;
+  opacity:.9;
+}
+:root[data-theme="light"] .board-wrap::after{
+  animation: starsDriftB 90s linear infinite, starsTwinkleLight 6s ease-in-out infinite reverse;
+  opacity:.9;
+}
+@keyframes starsTwinkleLight{
+  0%, 100% { filter: invert(1) drop-shadow(0 0 2px rgba(0,0,0,0.45)); }
+  50%      { filter: invert(1) drop-shadow(0 0 5px rgba(0,0,0,0.85)); }
+}
 
 /* Make sure direct children of .board-wrap render above the stars layer */
 .board-wrap > *{position:relative;z-index:1;}
@@ -193,14 +205,70 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
   background:rgba(31,31,33,0.15) !important;
   backdrop-filter:blur(2px);
   -webkit-backdrop-filter:blur(2px);
+  border-color:rgba(255,255,255,0.28);
+}
+/* Dark mode: dashboard stat cards + timeline + header + sidebar — same translucent-white border for visual consistency. */
+:root[data-theme="dark"] .dash .d-card,
+:root[data-theme="dark"] .tl-toggle,
+:root[data-theme="dark"] .tl-panel{
+  border-color:rgba(255,255,255,0.28);
+}
+:root[data-theme="dark"] .tl-toggle:hover{
+  border-color:rgba(255,255,255,0.45);
+}
+:root[data-theme="dark"] header{
+  border-bottom-color:rgba(255,255,255,0.28);
+}
+:root[data-theme="dark"] .sidebar{
+  border-right-color:rgba(255,255,255,0.28);
+}
+/* Dark mode: main task card border — lighter on the 3 non-urgency sides for a visible outline. */
+:root[data-theme="dark"] .tcard:not(.tcard-sub){
+  border-top-color:rgba(255,255,255,0.18);
+  border-right-color:rgba(255,255,255,0.18);
+  border-bottom-color:rgba(255,255,255,0.18);
+}
+:root[data-theme="dark"] .tcard:not(.tcard-sub):hover{
+  border-top-color:rgba(255,255,255,0.35);
+  border-right-color:rgba(255,255,255,0.35);
+  border-bottom-color:rgba(255,255,255,0.35);
 }
 :root[data-theme="dark"] .tcard:not(.tcard-sub){
   background:#242427;
 }
-/* Light mode: phase columns — very faint tint + bold border */
+/* Light mode: phase columns — very transparent so the starfield shows through, with a bold border. */
 :root[data-theme="light"] .col{
-  background:rgba(0,0,0,0.01);
+  background:rgba(255,255,255,0.18);
+  backdrop-filter:blur(2px);
+  -webkit-backdrop-filter:blur(2px);
   border-color:rgba(0,0,0,0.45);
+}
+/* Light mode: dashboard stat cards + timeline toggle/panel — bold dark border to match columns. */
+:root[data-theme="light"] .dash .d-card,
+:root[data-theme="light"] .tl-toggle,
+:root[data-theme="light"] .tl-panel{
+  border-color:rgba(0,0,0,0.45);
+}
+:root[data-theme="light"] .tl-toggle:hover{
+  border-color:rgba(0,0,0,0.6);
+}
+/* Light mode: header banner + sidebar (projects list) — match the same bold dark border. */
+:root[data-theme="light"] header{
+  border-bottom-color:rgba(0,0,0,0.45);
+}
+:root[data-theme="light"] .sidebar{
+  border-right-color:rgba(0,0,0,0.45);
+}
+/* Light mode: main task card border — darker on the 3 non-urgency sides so the card outline is visible. */
+:root[data-theme="light"] .tcard:not(.tcard-sub){
+  border-top-color:rgba(0,0,0,0.22);
+  border-right-color:rgba(0,0,0,0.22);
+  border-bottom-color:rgba(0,0,0,0.22);
+}
+:root[data-theme="light"] .tcard:not(.tcard-sub):hover{
+  border-top-color:rgba(0,0,0,0.4);
+  border-right-color:rgba(0,0,0,0.4);
+  border-bottom-color:rgba(0,0,0,0.4);
 }
 /* Light mode: subtask cards — urgency tint clearly visible. */
 :root[data-theme="light"] .tcard-sub.u-high{background:rgba(220,38,38,0.15);border-color:rgba(220,38,38,0.45);}
@@ -236,7 +304,9 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .col-new-form-actions{display:flex;gap:8px;}
 
 /* ── TASK CARD (collapsed) ── */
-.tcard{background:var(--surface);border:1.5px solid var(--border);border-radius:10px;padding:12px 14px;cursor:pointer;transition:all .14s;position:relative;overflow:hidden;display:flex;flex-direction:row;align-items:flex-start;gap:8px;flex-shrink:0;}
+.tcard{background:var(--surface);border:1.5px solid var(--border);border-radius:10px;padding:12px 14px;cursor:pointer;transition:transform .2s cubic-bezier(.2,.7,.3,1),box-shadow .14s,border-color .14s,opacity .14s,background-color .14s;position:relative;overflow:hidden;display:flex;flex-direction:row;align-items:flex-start;gap:8px;flex-shrink:0;}
+/* While dragging, surrounding cards translate down to open a gap where the drop will land. */
+.tcard.tcard-shifted{transform:translateY(var(--shift-y,0px)) !important;}
 .tc-tick{width:18px;height:18px;border:2px solid #5a6575;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .14s;background:rgba(255,255,255,.04);flex-shrink:0;margin-top:1px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.25);}
 .tc-tick:hover{border-color:var(--accent);background:rgba(74,222,128,.15);box-shadow:0 0 0 3px rgba(74,222,128,.15);}
 .tc-tick.checked{background:var(--accent);border-color:var(--accent);box-shadow:0 0 0 2px rgba(74,222,128,.25);}

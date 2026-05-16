@@ -1967,14 +1967,18 @@ function closeReportModal(){ document.getElementById('reportModal').classList.re
 // ═══════════════════════════════════════════════
 // DRAG AND DROP
 // ═══════════════════════════════════════════════
+let _dragHeight=60;
 function dragStart(e,id){
   e.stopPropagation();
   _dragTaskId=id;
+  const el=document.getElementById('tc-'+id);
+  if(el) _dragHeight=el.offsetHeight||60;
   e.dataTransfer.effectAllowed='move';
   e.dataTransfer.setData('text/plain',id);
-  setTimeout(()=>{ const el=document.getElementById('tc-'+id); if(el) el.classList.add('dragging'); },0);
+  setTimeout(()=>{ if(el) el.classList.add('dragging'); },0);
 }
 function dragEnd(){
+  clearAllDragShifts();
   document.querySelectorAll('.tcard.dragging').forEach(el=>el.classList.remove('dragging'));
   document.querySelectorAll('.col.col-task-over').forEach(el=>el.classList.remove('col-task-over'));
   _dragTaskId=null;
@@ -1985,14 +1989,40 @@ let _dragSubInfo=null;
 function dragStartSub(e,taskId,idx){
   e.stopPropagation();
   _dragSubInfo={taskId,idx};
+  const el=e.target.closest('.tcard-sub');
+  if(el) _dragHeight=el.offsetHeight||60;
   e.dataTransfer.effectAllowed='move';
   e.dataTransfer.setData('text/plain','sub:'+taskId+':'+idx);
-  setTimeout(()=>{ const el=e.target.closest('.tcard-sub'); if(el) el.classList.add('dragging'); },0);
+  setTimeout(()=>{ if(el) el.classList.add('dragging'); },0);
 }
 function dragEndSub(){
+  clearAllDragShifts();
   document.querySelectorAll('.tcard.dragging').forEach(el=>el.classList.remove('dragging'));
   document.querySelectorAll('.col.col-task-over').forEach(el=>el.classList.remove('col-task-over'));
   _dragSubInfo=null;
+}
+
+// Visual feedback while dragging: non-dragging cards at/below the drop index slide
+// down by the dragged card's height, opening a gap so the user sees where it will land.
+function applyDragShifts(colBody, dropIdx){
+  if(!colBody) return;
+  const cards=[...colBody.querySelectorAll('.tcard:not(.dragging)')];
+  const offset=(_dragHeight+8)+'px';
+  cards.forEach((c,i)=>{
+    if(i>=dropIdx){
+      c.style.setProperty('--shift-y',offset);
+      c.classList.add('tcard-shifted');
+    } else if(c.classList.contains('tcard-shifted')){
+      c.classList.remove('tcard-shifted');
+      c.style.removeProperty('--shift-y');
+    }
+  });
+}
+function clearAllDragShifts(){
+  document.querySelectorAll('.tcard-shifted').forEach(el=>{
+    el.classList.remove('tcard-shifted');
+    el.style.removeProperty('--shift-y');
+  });
 }
 
 function getDropIndex(colBody,y){
@@ -2060,6 +2090,20 @@ function colDragOver(e){
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     e.currentTarget.classList.add('col-task-over');
+    const colBody = e.currentTarget.querySelector('.col-body');
+    if(colBody){
+      // Clear shifts in OTHER columns first, so they snap back as the cursor crosses columns.
+      document.querySelectorAll('.col-body').forEach(cb => {
+        if(cb !== colBody){
+          cb.querySelectorAll('.tcard-shifted').forEach(el => {
+            el.classList.remove('tcard-shifted');
+            el.style.removeProperty('--shift-y');
+          });
+        }
+      });
+      const dropIdx = getDropIndex(colBody, e.clientY);
+      applyDragShifts(colBody, dropIdx);
+    }
     return;
   }
   if(_dragColPh){
@@ -2075,9 +2119,14 @@ function colDragLeave(e){
   if(!col || col.contains(e.relatedTarget)) return;
   col.classList.remove('col-drag-over');
   col.classList.remove('col-task-over');
+  col.querySelectorAll('.tcard-shifted').forEach(el => {
+    el.classList.remove('tcard-shifted');
+    el.style.removeProperty('--shift-y');
+  });
 }
 function colDrop(e, targetPh){
   e.currentTarget.classList.remove('col-task-over');
+  clearAllDragShifts();
   // Task/subtask drop — anywhere in the column
   if(_dragTaskId || _dragSubInfo){
     e.preventDefault();
