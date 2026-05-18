@@ -2028,6 +2028,7 @@ function applyDragShifts(colBody, dropIdx){
   });
 }
 function clearAllDragShifts(){
+  if(_dragOverRaf){ cancelAnimationFrame(_dragOverRaf); _dragOverRaf=null; _dragOverPending=null; }
   document.querySelectorAll('.tcard-shifted').forEach(el=>{
     el.classList.remove('tcard-shifted');
     el.style.removeProperty('--shift-y');
@@ -2094,14 +2095,26 @@ function colDragEnd(e){
 }
 // Unified dragover for columns — accepts task/sub drops (anywhere in column)
 // AND handles column reorder. No visual feedback for task drops per UX request.
+// Throttle drag-over to one update per animation frame. dragover fires on every mouse move
+// (~60–120/s) — without throttling we'd recompute shifts and write inline styles dozens of times
+// per frame for nothing.
+let _dragOverRaf = null;
+let _dragOverPending = null;
 function colDragOver(e){
   if(_dragTaskId || _dragSubInfo){
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    e.currentTarget.classList.add('col-task-over');
-    const colBody = e.currentTarget.querySelector('.col-body');
-    if(colBody){
-      // Clear shifts in OTHER columns first, so they snap back as the cursor crosses columns.
+    const target = e.currentTarget;
+    target.classList.add('col-task-over');
+    _dragOverPending = {target, clientY: e.clientY};
+    if(_dragOverRaf) return;
+    _dragOverRaf = requestAnimationFrame(()=>{
+      _dragOverRaf = null;
+      const p = _dragOverPending; _dragOverPending = null;
+      if(!p) return;
+      const colBody = p.target.querySelector('.col-body');
+      if(!colBody) return;
+      // Clear shifts in other columns so they snap back as the cursor crosses columns.
       document.querySelectorAll('.col-body').forEach(cb => {
         if(cb !== colBody){
           cb.querySelectorAll('.tcard-shifted').forEach(el => {
@@ -2110,9 +2123,9 @@ function colDragOver(e){
           });
         }
       });
-      const dropIdx = getDropIndex(colBody, e.clientY);
+      const dropIdx = getDropIndex(colBody, p.clientY);
       applyDragShifts(colBody, dropIdx);
-    }
+    });
     return;
   }
   if(_dragColPh){

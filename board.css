@@ -119,7 +119,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
   background-repeat:repeat;
   animation:starsDriftA 140s linear infinite, starsTwinkle 4s ease-in-out infinite;
   opacity:1;
-  filter:drop-shadow(0 0 2px rgba(255,255,255,0.7));
+  will-change:background-position,opacity;
+  transform:translateZ(0);
 }
 .board-wrap::after{
   background-image:
@@ -138,11 +139,13 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
   background-repeat:repeat;
   animation:starsDriftB 90s linear infinite, starsTwinkle 6s ease-in-out infinite reverse;
   opacity:1;
-  filter:drop-shadow(0 0 2px rgba(255,255,255,0.7));
+  will-change:background-position,opacity;
+  transform:translateZ(0);
 }
+/* Twinkle via opacity (compositor-only, cheap) instead of filter:drop-shadow (per-frame paint). */
 @keyframes starsTwinkle{
-  0%, 100% { filter: drop-shadow(0 0 2px rgba(255,255,255,0.5)); }
-  50%      { filter: drop-shadow(0 0 4px rgba(255,255,255,0.9)); }
+  0%, 100% { opacity: 0.85; }
+  50%      { opacity: 1; }
 }
 @keyframes starsDriftA{
   from { background-position: 0 0; }
@@ -152,20 +155,11 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
   from { background-position: 0 0; }
   to   { background-position: 380px -200px; }
 }
-/* Light theme: invert white stars to black + apply a black shimmer so they read as "shiny" against the pale bg.
-   The base ::before/::after animation re-sets `filter` each frame, so we override the animation with
-   light-mode-specific keyframes that include invert(1) — otherwise the invert is lost mid-animation. */
-:root[data-theme="light"] .board-wrap::before{
-  animation: starsDriftA 140s linear infinite, starsTwinkleLight 4s ease-in-out infinite;
-  opacity:.9;
-}
+/* Light theme: invert white stars to black. invert(1) is set statically (not in keyframe) so the
+   browser can rasterize once instead of re-running the filter every frame. Twinkle uses opacity only. */
+:root[data-theme="light"] .board-wrap::before,
 :root[data-theme="light"] .board-wrap::after{
-  animation: starsDriftB 90s linear infinite, starsTwinkleLight 6s ease-in-out infinite reverse;
-  opacity:.9;
-}
-@keyframes starsTwinkleLight{
-  0%, 100% { filter: invert(1) drop-shadow(0 0 2px rgba(0,0,0,0.45)); }
-  50%      { filter: invert(1) drop-shadow(0 0 5px rgba(0,0,0,0.85)); }
+  filter: invert(1);
 }
 
 /* Make sure direct children of .board-wrap render above the stars layer */
@@ -306,7 +300,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 /* ── TASK CARD (collapsed) ── */
 .tcard{background:var(--surface);border:1.5px solid var(--border);border-radius:9px;padding:11px 13px;cursor:pointer;transition:transform .2s cubic-bezier(.2,.7,.3,1),box-shadow .14s,border-color .14s,opacity .14s,background-color .14s;position:relative;overflow:hidden;display:flex;flex-direction:row;align-items:flex-start;gap:8px;flex-shrink:0;}
 /* While dragging, surrounding cards translate down to open a gap where the drop will land. */
-.tcard.tcard-shifted{transform:translateY(var(--shift-y,0px)) !important;}
+.tcard.tcard-shifted{transform:translateY(var(--shift-y,0px)) !important;will-change:transform;}
+.tcard.dragging{will-change:transform,opacity;}
 /* Neon-glow tick: faint ring when idle, glowing ✓ (white in dark / black in light) when checked. */
 .tc-tick{width:18px;height:18px;border:1.5px solid rgba(255,255,255,0.35);border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;background:transparent;flex-shrink:0;margin-top:1px;}
 .tc-tick:hover{border-color:rgba(255,255,255,0.85);box-shadow:0 0 6px rgba(255,255,255,0.4);}
