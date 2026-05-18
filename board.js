@@ -496,15 +496,18 @@ function renderDrawer(){
     subsHtml+=`<div class="subtask-list">`+subs.map((s,i)=>{
       const subTimeFmt=fmtMsSub(getSubDisplayMs(s));
       const stReopens=(s.history||[]).filter(h=>h.type==='reopened').length;
+      const metaChips=[];
+      if(s.phase&&!s.done) metaChips.push(`<span class="st-phase">📌 ${esc(s.phase)}</span>`);
+      if(stReopens) metaChips.push(`<span class="st-reopen">↩ ${stReopens}</span>`);
+      if(subTimeFmt) metaChips.push(`<span class="st-time">⏱ ${subTimeFmt}</span>`);
+      const metaHtml=metaChips.length?`<div class="st-meta">${metaChips.join('')}</div>`:'';
       return `<div class="subtask-row" onclick="openSubtaskDetail('${t.id}',${i})">
         <div class="st-check ${s.done?'checked':''}" onclick="event.stopPropagation();toggleSubtask('${t.id}',${i})"></div>
         <div class="st-info">
           <div class="st-title ${s.done?'done':''}">${esc(s.title)}</div>
-          ${s.phase&&!s.done?`<div class="st-phase">📌 Deployed to ${esc(s.phase)}</div>`:''}
+          ${metaHtml}
         </div>
-        ${stReopens?`<div class="st-reopen">↩ ${stReopens}</div>`:''}
         <span class="assign-wrap ${s.assignee?'':'unassigned'}" onclick="event.stopPropagation();openAssignPicker(event,'sub','${t.id}:${i}')" title="Click to reassign">${USER_ICON_SVG}<span class="st-assign">${s.assignee?'@'+esc(s.assignee):'Unassigned'}</span></span>
-        ${subTimeFmt?`<div class="st-time">⏱ ${subTimeFmt}</div>`:''}
         <button class="st-del" onclick="event.stopPropagation();deleteSubtask('${t.id}',${i})">✕</button>
       </div>`;
     }).join('')+`</div>`;
@@ -848,13 +851,18 @@ function renderSubtaskDrawer(){
       <div class="st-progress-track"><div class="st-progress-fill" style="width:${nestsPct}%"></div></div>
       <div class="st-progress-txt">${nestsDone}/${nests.length}</div>
     </div>`;
-    nestHtml += `<div class="subtask-list">`+nests.map((n,ni)=>`
-      <div class="subtask-row" onclick="openNestedDetail(${ni})">
+    nestHtml += `<div class="subtask-list">`+nests.map((n,ni)=>{
+      const ntReopens=(n.history||[]).filter(h=>h.type==='reopened').length;
+      const metaChips=[];
+      if(ntReopens) metaChips.push(`<span class="st-reopen">↩ ${ntReopens}</span>`);
+      const metaHtml=metaChips.length?`<div class="st-meta">${metaChips.join('')}</div>`:'';
+      return `<div class="subtask-row" onclick="openNestedDetail(${ni})">
         <div class="st-check ${n.done?'checked':''}" onclick="event.stopPropagation();toggleNestedSubtask('${t.id}',${_drawerSubIdx},${ni})"></div>
-        <div class="st-info"><div class="st-title ${n.done?'done':''}">${esc(n.title)}</div></div>
+        <div class="st-info"><div class="st-title ${n.done?'done':''}">${esc(n.title)}</div>${metaHtml}</div>
         <span class="assign-wrap ${n.assignee?'':'unassigned'}" onclick="event.stopPropagation();openAssignPicker(event,'nest','${t.id}:${_drawerSubIdx}:${ni}')" title="Click to reassign">${USER_ICON_SVG}<span class="st-assign">${n.assignee?'@'+esc(n.assignee):'Unassigned'}</span></span>
         <button class="st-del" onclick="event.stopPropagation();deleteNestedSubtask('${t.id}',${_drawerSubIdx},${ni})">✕</button>
-      </div>`).join('')+`</div>`;
+      </div>`;
+    }).join('')+`</div>`;
   }
   nestHtml += `<div class="st-add-row">
     <input class="st-add-input" id="nestInput_${s.id}" placeholder="Add nested subtask..." onkeydown="if(event.key==='Enter') addNestedSubtask('${t.id}',${_drawerSubIdx})" />
