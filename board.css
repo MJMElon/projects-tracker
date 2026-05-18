@@ -307,10 +307,11 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .tcard{background:var(--surface);border:1.5px solid var(--border);border-radius:9px;padding:11px 13px;cursor:pointer;transition:transform .2s cubic-bezier(.2,.7,.3,1),box-shadow .14s,border-color .14s,opacity .14s,background-color .14s;position:relative;overflow:hidden;display:flex;flex-direction:row;align-items:flex-start;gap:8px;flex-shrink:0;}
 /* While dragging, surrounding cards translate down to open a gap where the drop will land. */
 .tcard.tcard-shifted{transform:translateY(var(--shift-y,0px)) !important;}
-.tc-tick{width:18px;height:18px;border:2px solid #5a6575;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .14s;background:rgba(255,255,255,.04);flex-shrink:0;margin-top:1px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.25);}
-.tc-tick:hover{border-color:var(--accent);background:rgba(74,222,128,.15);box-shadow:0 0 0 3px rgba(74,222,128,.15);}
-.tc-tick.checked{background:var(--accent);border-color:var(--accent);box-shadow:0 0 0 2px rgba(74,222,128,.25);}
-.tc-tick.checked::after{content:'✓';color:#0d0f12;font-size:11px;font-weight:800;line-height:1;}
+/* Neon-glow tick: faint ring when idle, glowing ✓ (white in dark / black in light) when checked. */
+.tc-tick{width:18px;height:18px;border:1.5px solid rgba(255,255,255,0.35);border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;background:transparent;flex-shrink:0;margin-top:1px;}
+.tc-tick:hover{border-color:rgba(255,255,255,0.85);box-shadow:0 0 6px rgba(255,255,255,0.4);}
+.tc-tick.checked{background:transparent;border-color:rgba(255,255,255,0.7);box-shadow:0 0 6px rgba(255,255,255,0.45),0 0 12px rgba(255,255,255,0.22);}
+.tc-tick.checked::after{content:'✓';color:#fff;font-size:12px;font-weight:900;line-height:1;text-shadow:0 0 3px #fff,0 0 6px rgba(255,255,255,0.8),0 0 10px rgba(255,255,255,0.5);}
 .tc-content{flex:1;min-width:0;display:flex;flex-direction:column;gap:7px;}
 .tcard:not(.tcard-sub){border-left:3.5px solid var(--border2);}
 .tcard.u-high:not(.tcard-sub){border-left-color:var(--red);}
@@ -413,10 +414,11 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .drawer-head{padding:18px 20px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;gap:12px;flex-shrink:0;}
 .drawer-handle{width:36px;height:4px;background:var(--border2);border-radius:2px;margin:0 auto 14px;display:none;}
 @media(max-width:600px){.drawer-handle{display:block;}}
-.drawer-check{width:22px;height:22px;border:1.5px solid var(--border2);border-radius:5px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;margin-top:2px;transition:all .15s;}
-.drawer-check:hover{border-color:var(--accent);}
-.drawer-check.checked{background:var(--accent);border-color:var(--accent);}
-.drawer-check.checked::after{content:'✓';color:#0d0f12;font-size:14px;font-weight:700;}
+/* Drawer tick — same neon-glow style. */
+.drawer-check{width:24px;height:24px;border:1.5px solid rgba(255,255,255,0.35);border-radius:50%;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;margin-top:5px;transition:all .15s;background:transparent;}
+.drawer-check:hover{border-color:rgba(255,255,255,0.85);box-shadow:0 0 6px rgba(255,255,255,0.4);}
+.drawer-check.checked{background:transparent;border-color:rgba(255,255,255,0.7);box-shadow:0 0 8px rgba(255,255,255,0.5),0 0 16px rgba(255,255,255,0.25);}
+.drawer-check.checked::after{content:'✓';color:#fff;font-size:14px;font-weight:900;line-height:1;text-shadow:0 0 4px #fff,0 0 8px rgba(255,255,255,0.85),0 0 14px rgba(255,255,255,0.55);}
 .drawer-title-wrap{flex:1;}
 .drawer-title{font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:18px;line-height:1.4;color:var(--text);}
 .drawer-title-input{flex:1;font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:18px;line-height:1.4;color:var(--text);background:transparent;border:1px solid transparent;border-radius:6px;padding:4px 8px;margin-left:-8px;outline:none;width:100%;transition:border-color .12s,background .12s;}
@@ -473,10 +475,25 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .subtask-list::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
 .subtask-row{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:8px;background:var(--surface3);border:1px solid var(--border2);transition:border-color .12s;}
 .subtask-row:hover{border-color:var(--accent-dim);}
-.st-check{width:18px;height:18px;border:2px solid #5a6575;border-radius:50%;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .13s;background:rgba(255,255,255,.04);box-shadow:inset 0 0 0 1px rgba(0,0,0,.25);}
-.st-check:hover{border-color:var(--accent);background:rgba(74,222,128,.15);box-shadow:0 0 0 3px rgba(74,222,128,.15);}
-.st-check.checked{background:var(--accent);border-color:var(--accent);box-shadow:0 0 0 2px rgba(74,222,128,.25);}
-.st-check.checked::after{content:'✓';color:#0d0f12;font-size:11px;font-weight:800;line-height:1;}
+/* Subtask-row tick — same neon-glow style. */
+.st-check{width:18px;height:18px;border:1.5px solid rgba(255,255,255,0.35);border-radius:50%;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .15s;background:transparent;}
+.st-check:hover{border-color:rgba(255,255,255,0.85);box-shadow:0 0 6px rgba(255,255,255,0.4);}
+.st-check.checked{background:transparent;border-color:rgba(255,255,255,0.7);box-shadow:0 0 6px rgba(255,255,255,0.45),0 0 12px rgba(255,255,255,0.22);}
+.st-check.checked::after{content:'✓';color:#fff;font-size:12px;font-weight:900;line-height:1;text-shadow:0 0 3px #fff,0 0 6px rgba(255,255,255,0.8),0 0 10px rgba(255,255,255,0.5);}
+
+/* Light theme: invert glow color to black for contrast against pale bg. */
+:root[data-theme="light"] .tc-tick,
+:root[data-theme="light"] .st-check,
+:root[data-theme="light"] .drawer-check{border-color:rgba(0,0,0,0.4);}
+:root[data-theme="light"] .tc-tick:hover,
+:root[data-theme="light"] .st-check:hover,
+:root[data-theme="light"] .drawer-check:hover{border-color:rgba(0,0,0,0.85);box-shadow:0 0 6px rgba(0,0,0,0.3);}
+:root[data-theme="light"] .tc-tick.checked,
+:root[data-theme="light"] .st-check.checked,
+:root[data-theme="light"] .drawer-check.checked{border-color:rgba(0,0,0,0.75);box-shadow:0 0 6px rgba(0,0,0,0.35),0 0 12px rgba(0,0,0,0.18);}
+:root[data-theme="light"] .tc-tick.checked::after,
+:root[data-theme="light"] .st-check.checked::after,
+:root[data-theme="light"] .drawer-check.checked::after{color:#000;text-shadow:0 0 3px rgba(0,0,0,0.85),0 0 6px rgba(0,0,0,0.55),0 0 10px rgba(0,0,0,0.3);}
 .st-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;}
 .st-title{font-size:12.5px;color:var(--text2);line-height:1.4;cursor:pointer;}
 .st-title.done{text-decoration:line-through;color:var(--text3);}
@@ -521,6 +538,23 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .field{margin-bottom:14px;}
 .field label{display:block;font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px;}
 .field input,.field select,.field textarea{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px 14px;font-family:'Plus Jakarta Sans',sans-serif;font-size:16px;outline:none;transition:border-color .15s;-webkit-appearance:none;appearance:none;}
+/* Dark mode: brighten modal field inputs so they stand out against the surface bg. */
+:root[data-theme="dark"] .field input,
+:root[data-theme="dark"] .field select,
+:root[data-theme="dark"] .field textarea{background:#2a2a2e;border-color:rgba(255,255,255,0.13);}
+/* Dark mode: drawer field fills (description, dates, phase select, add-row, etc.) — slightly darker grey. */
+:root[data-theme="dark"] .sub-desc-input,
+:root[data-theme="dark"] .sub-date-field input,
+:root[data-theme="dark"] .sub-phase-select,
+:root[data-theme="dark"] .st-add-input,
+:root[data-theme="dark"] .st-add-assign,
+:root[data-theme="dark"] .drawer-title-input,
+:root[data-theme="dark"] .d-desc{
+  background:#2a2a2e;
+  border-color:rgba(255,255,255,0.13);
+}
+/* Hover/focus retain the accent affordance. */
+:root[data-theme="dark"] .drawer-title-input:hover{background:#313137;}
 /* ── REPEAT BOX (combined freq + extras inside one rounded container) ── */
 .repeat-box{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:8px;transition:border-color .15s;}
 .repeat-box:focus-within{border-color:var(--accent);}

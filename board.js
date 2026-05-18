@@ -348,7 +348,9 @@ function renderCard(t){
   const reopens=(t.history||[]).filter(h=>h.type==='reopened');
   const lastH=t.history?.length?t.history[t.history.length-1]:null;
   const isReopened=lastH?.type==='reopened'&&!t.done;
-  const timeFmt=fmtMsCard(getDisplayMs(t));
+  let timeFmt=fmtMsCard(getDisplayMs(t));
+  // Done tasks freeze at completedAt — if under a day, still show "<1d" so duration is always visible.
+  if(t.done && !timeFmt) timeFmt='<1d';
   const subs=t.subtasks||[];
   const subsDone=subs.filter(s=>s.done).length;
 
@@ -363,9 +365,8 @@ function renderCard(t){
     ${t.due?`<span class="badge ${isOverdue(t)?'b-overdue':'b-meta'}">DUE ${fmtDate(t.due)}${isOverdue(t)?' ⚠':''}</span>`:''}
   </div>`;
 
-  // Row 3: done, duration, reopens, subtasks progress
+  // Row 3: duration (replaces the old "DONE" badge — strikethrough + filled tick already signal done), reopens, subtasks progress
   const r3=[];
-  if(t.done) r3.push(`<span class="badge b-done">✓ DONE</span>`);
   if(timeFmt) r3.push(`<span class="badge b-time">⏱ ${timeFmt}</span>`);
   if(reopens.length) r3.push(`<span class="badge b-reopen">↩ ${reopens.length}</span>`);
   if(subs.length) r3.push(`<span class="badge b-subtask">☑ ${subsDone}/${subs.length}</span>`);
@@ -386,7 +387,8 @@ function renderCard(t){
 }
 
 function renderSubCard(t,s,idx){
-  const timeFmt=fmtMsCard(getSubDisplayMs(s));
+  let timeFmt=fmtMsCard(getSubDisplayMs(s));
+  if(s.done && !timeFmt) timeFmt='<1d';
   const subId=`sc-${t.id}-${idx}`;
   const subReopens=(s.history||[]).filter(h=>h.type==='reopened');
   const nests=s.subtasks||[];
@@ -435,7 +437,8 @@ function renderDrawer(){
   const t=S.tasks.find(t=>t.id===_drawerId); if(!t) return;
   const reopens=(t.history||[]).filter(h=>h.type==='reopened');
   const isReopened=!t.done&&reopens.length&&t.history[t.history.length-1]?.type==='reopened';
-  const timeFmt=fmtMs(getDisplayMs(t));
+  let timeFmt=fmtMs(getDisplayMs(t));
+  if(t.done && !timeFmt) timeFmt='<1d';
 
   // HEAD
   document.getElementById('drawerHead').innerHTML=`
@@ -449,10 +452,9 @@ function renderDrawer(){
   // BODY
   let body='';
 
-  // Badges row
+  // Badges row — "DONE" badge dropped; strikethrough title + filled tick signal completion, duration chip shows the day count.
   let badges='';
   badges+=`<span class="badge b-${t.urgency}">${urgencyLabel(t.urgency)}</span>`;
-  if(t.done) badges+=`<span class="badge b-done">✓ DONE</span>`;
   if(isReopened) badges+=`<span class="badge b-reopen">↩ REOPENED</span>`;
   if(t.assignee) badges+=`<span class="assign-wrap">${USER_ICON_SVG}<span class="badge b-assign">@${esc(t.assignee)}</span></span>`;
   if(t.startDate) badges+=`<span class="badge b-meta">▶ ${fmtDate(t.startDate)}</span>`;
@@ -673,7 +675,6 @@ function renderNestedDrawer(){
   </div>`;
 
   let badges='';
-  if(n.done) badges+=`<span class="badge b-done">✓ DONE</span>`;
   if(n.assignee) badges+=`<span class="assign-wrap">${USER_ICON_SVG}<span class="badge b-assign">@${esc(n.assignee)}</span></span>`;
   if(badges) body+=`<div class="d-section"><div class="d-badges">${badges}</div></div>`;
 
@@ -798,7 +799,8 @@ function renderSubtaskDrawer(){
   if(!s.screenshots) s.screenshots=[];
   if(!s.history) s.history=[{type:'created',ts:s.createdAt||Date.now()}];
 
-  const timeFmt=fmtMsSub(getSubDisplayMs(s));
+  let timeFmt=fmtMsSub(getSubDisplayMs(s));
+  if(s.done && !timeFmt) timeFmt='<1d';
 
   // HEAD
   document.getElementById('drawerHead').innerHTML=`
@@ -814,7 +816,6 @@ function renderSubtaskDrawer(){
 
   const drawerReopens=(s.history||[]).filter(h=>h.type==='reopened');
   let badges='';
-  if(s.done) badges+=`<span class="badge b-done">✓ DONE</span>`;
   if(s.phase&&!s.done) badges+=`<span class="badge b-meta">📌 ${esc(s.phase)}</span>`;
   if(timeFmt) badges+=`<span class="badge b-time">⏱ ${timeFmt}</span>`;
   if(s.assignee) badges+=`<span class="assign-wrap">${USER_ICON_SVG}<span class="badge b-assign">@${esc(s.assignee)}</span></span>`;
