@@ -566,12 +566,13 @@ function duplicateTask(taskId){
   const now = Date.now();
   const startDate = tsToDateInput(now);
 
+  // Duplicates start unassigned across all levels so the new copy is a clean template.
   function cloneNested(n){
     return {
       id: uid(),
       title: n.title,
       desc: n.desc || '',
-      assignee: n.assignee || null,
+      assignee: null,
       done: false, completedAt: null,
       startedAt: now, createdAt: now,
       startDate, due: n.due || '',
@@ -585,7 +586,7 @@ function duplicateTask(taskId){
       id: uid(),
       title: s.title,
       desc: s.desc || '',
-      assignee: s.assignee || null,
+      assignee: null,
       done: false, completedAt: null,
       startedAt: now, createdAt: now,
       startDate, due: s.due || '',
@@ -604,7 +605,7 @@ function duplicateTask(taskId){
     desc: src.desc || '',
     phase: src.phase,
     urgency: src.urgency,
-    assignee: src.assignee || '',
+    assignee: '',
     due: src.due || '',
     startDate,
     done: false,
