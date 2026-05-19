@@ -468,8 +468,12 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .subtask-list{display:flex;flex-direction:column;gap:6px;max-height:75vh;overflow-y:auto;padding-right:4px;}
 .subtask-list::-webkit-scrollbar{width:6px;}
 .subtask-list::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
-.subtask-row{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:8px;background:var(--surface3);border:1px solid var(--border2);transition:border-color .12s;}
+.subtask-row{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:8px;background:var(--surface3);border:1px solid var(--border2);transition:transform .2s cubic-bezier(.2,.7,.3,1),border-color .12s,opacity .14s;}
 .subtask-row:hover{border-color:var(--accent-dim);}
+.subtask-row[draggable]{cursor:grab;}
+.subtask-row.dragging{opacity:.4;cursor:grabbing;}
+/* Surrounding rows slide down to open a gap where the dragged row will land. */
+.subtask-row.st-shifted{transform:translateY(var(--shift-y,0px));will-change:transform;}
 /* Subtask-row tick — same neon-glow style. */
 .st-check{width:18px;height:18px;border:1.5px solid rgba(255,255,255,0.35);border-radius:50%;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .15s;background:transparent;}
 .st-check:hover{border-color:rgba(255,255,255,0.85);box-shadow:0 0 6px rgba(255,255,255,0.4);}

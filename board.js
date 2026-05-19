@@ -495,7 +495,7 @@ function renderDrawer(){
       <div class="st-progress-track"><div class="st-progress-fill" style="width:${subsPct}%"></div></div>
       <div class="st-progress-txt">${subsDone}/${subs.length}</div>
     </div>`;
-    subsHtml+=`<div class="subtask-list">`+subs.map((s,i)=>{
+    subsHtml+=`<div class="subtask-list" ondragover="subRowDragOver(event)" ondrop="subRowDrop(event)">`+subs.map((s,i)=>{
       const subTimeFmt=fmtMsSub(getSubDisplayMs(s));
       const stReopens=(s.history||[]).filter(h=>h.type==='reopened').length;
       const metaChips=[];
@@ -503,7 +503,7 @@ function renderDrawer(){
       if(stReopens) metaChips.push(`<span class="st-reopen">↩ ${stReopens}</span>`);
       if(subTimeFmt) metaChips.push(`<span class="st-time">⏱ ${subTimeFmt}</span>`);
       const metaHtml=metaChips.length?`<div class="st-meta">${metaChips.join('')}</div>`:'';
-      return `<div class="subtask-row" onclick="openSubtaskDetail('${t.id}',${i})">
+      return `<div class="subtask-row" draggable="true" ondragstart="subRowDragStart(event,'sub',${i})" ondragend="subRowDragEnd(event)" onclick="openSubtaskDetail('${t.id}',${i})">
         <div class="st-check ${s.done?'checked':''}" onclick="event.stopPropagation();toggleSubtask('${t.id}',${i})"></div>
         <div class="st-info">
           <div class="st-title ${s.done?'done':''}">${esc(s.title)}</div>
@@ -852,12 +852,12 @@ function renderSubtaskDrawer(){
       <div class="st-progress-track"><div class="st-progress-fill" style="width:${nestsPct}%"></div></div>
       <div class="st-progress-txt">${nestsDone}/${nests.length}</div>
     </div>`;
-    nestHtml += `<div class="subtask-list">`+nests.map((n,ni)=>{
+    nestHtml += `<div class="subtask-list" ondragover="subRowDragOver(event)" ondrop="subRowDrop(event)">`+nests.map((n,ni)=>{
       const ntReopens=(n.history||[]).filter(h=>h.type==='reopened').length;
       const metaChips=[];
       if(ntReopens) metaChips.push(`<span class="st-reopen">↩ ${ntReopens}</span>`);
       const metaHtml=metaChips.length?`<div class="st-meta">${metaChips.join('')}</div>`:'';
-      return `<div class="subtask-row" onclick="openNestedDetail(${ni})">
+      return `<div class="subtask-row" draggable="true" ondragstart="subRowDragStart(event,'nest',${ni})" ondragend="subRowDragEnd(event)" onclick="openNestedDetail(${ni})">
         <div class="st-check ${n.done?'checked':''}" onclick="event.stopPropagation();toggleNestedSubtask('${t.id}',${_drawerSubIdx},${ni})"></div>
         <div class="st-info"><div class="st-title ${n.done?'done':''}">${esc(n.title)}</div>${metaHtml}</div>
         <span class="assign-wrap ${n.assignee?'':'unassigned'}" onclick="event.stopPropagation();openAssignPicker(event,'nest','${t.id}:${_drawerSubIdx}:${ni}')" title="Click to reassign">${USER_ICON_SVG}<span class="st-assign">${n.assignee?'@'+esc(n.assignee):'Unassigned'}</span></span>
@@ -2033,6 +2033,92 @@ function clearAllDragShifts(){
     el.classList.remove('tcard-shifted');
     el.style.removeProperty('--shift-y');
   });
+}
+
+// ═══════════════════════════════════════════════
+// DRAWER SUBTASK + NESTED ROW REORDER (drag-and-drop with shift animation)
+// ═══════════════════════════════════════════════
+let _subRowDrag=null; // {type:'sub'|'nest', idx, height}
+let _subRowRaf=null;
+let _subRowPending=null;
+
+function subRowDragStart(e,type,idx){
+  e.stopPropagation();
+  const row=e.target.closest('.subtask-row');
+  if(!row) return;
+  _subRowDrag={type,idx,height:row.offsetHeight||40};
+  e.dataTransfer.effectAllowed='move';
+  e.dataTransfer.setData('text/plain','strow:'+type+':'+idx);
+  setTimeout(()=>{ row.classList.add('dragging'); },0);
+}
+function subRowDragEnd(){
+  if(_subRowRaf){ cancelAnimationFrame(_subRowRaf); _subRowRaf=null; _subRowPending=null; }
+  document.querySelectorAll('.subtask-row.dragging').forEach(el=>el.classList.remove('dragging'));
+  document.querySelectorAll('.subtask-row.st-shifted').forEach(el=>{
+    el.classList.remove('st-shifted');
+    el.style.removeProperty('--shift-y');
+  });
+  _subRowDrag=null;
+}
+function getSubRowDropIndex(list,y){
+  const rows=[...list.querySelectorAll('.subtask-row:not(.dragging)')];
+  for(let i=0;i<rows.length;i++){
+    const r=rows[i].getBoundingClientRect();
+    if(y<r.top+r.height/2) return i;
+  }
+  return rows.length;
+}
+function applySubRowShifts(list,dropIdx){
+  if(!list||!_subRowDrag) return;
+  const rows=[...list.querySelectorAll('.subtask-row:not(.dragging)')];
+  const offset=(_subRowDrag.height+6)+'px';
+  rows.forEach((r,i)=>{
+    if(i>=dropIdx){
+      r.style.setProperty('--shift-y',offset);
+      r.classList.add('st-shifted');
+    } else if(r.classList.contains('st-shifted')){
+      r.classList.remove('st-shifted');
+      r.style.removeProperty('--shift-y');
+    }
+  });
+}
+function subRowDragOver(e){
+  if(!_subRowDrag) return;
+  e.preventDefault();
+  e.stopPropagation();
+  e.dataTransfer.dropEffect='move';
+  _subRowPending={list:e.currentTarget,y:e.clientY};
+  if(_subRowRaf) return;
+  _subRowRaf=requestAnimationFrame(()=>{
+    _subRowRaf=null;
+    const p=_subRowPending; _subRowPending=null;
+    if(!p) return;
+    const dropIdx=getSubRowDropIndex(p.list,p.y);
+    applySubRowShifts(p.list,dropIdx);
+  });
+}
+function subRowDrop(e){
+  if(!_subRowDrag) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const list=e.currentTarget;
+  const dropIdx=getSubRowDropIndex(list,e.clientY);
+  const {type,idx:fromIdx}=_subRowDrag;
+  const t=S.tasks.find(t=>t.id===_drawerId);
+  if(t){
+    const arr=type==='sub'?t.subtasks:(t.subtasks[_drawerSubIdx]||{}).subtasks;
+    if(arr&&Array.isArray(arr)){
+      let toIdx=dropIdx;
+      if(fromIdx<toIdx) toIdx--; // removal shifts indices down by one
+      toIdx=Math.max(0,Math.min(toIdx,arr.length-1));
+      if(toIdx!==fromIdx){
+        const [item]=arr.splice(fromIdx,1);
+        arr.splice(toIdx,0,item);
+        save(); renderDrawer(); render();
+      }
+    }
+  }
+  subRowDragEnd();
 }
 
 function getDropIndex(colBody,y){
