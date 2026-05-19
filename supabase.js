@@ -87,7 +87,8 @@ function isUuid(s){ return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-
 // Raw-fetch an RPC endpoint with the current access token — bypasses
 // supabase-js internals (which have been hanging for this user).
 async function rpcFetch(fnName, args = {}){
-  const stored = readStoredSession();
+  // Use a fresh access token — long-lived tabs would otherwise hit JWT-expired errors here.
+  const stored = await ensureFreshSession();
   const token = stored?.access_token;
   const res = await fetch(SUPABASE_URL + '/rest/v1/rpc/' + fnName, {
     method: 'POST',
@@ -510,7 +511,9 @@ async function submitInvite(){
   msgEl.style.color='var(--text2)'; msgEl.textContent='Inviting…';
 
   // 1) Try the Edge Function — it sends a real Supabase invite email when needed.
-  const stored = (typeof readStoredSession === 'function') ? readStoredSession() : null;
+  // Refresh the access token if expired/near expiry; otherwise the function rejects with a JWT error
+  // (typical for admins whose tab has been open >1h or who haven't reloaded recently).
+  const stored = await ensureFreshSession();
   const token = stored?.access_token;
   let edgeOk = false, edgeBody = null;
   try {
@@ -690,6 +693,26 @@ function readStoredSession(){
     // Storage format varies across supabase-js versions; try both shapes.
     return parsed?.currentSession || parsed || null;
   } catch(e){ return null; }
+}
+
+// Returns a session whose access_token is guaranteed fresh (refreshes if within 60s of expiry).
+// Persists the refreshed session to localStorage so subsequent calls and supabase-js see it.
+async function ensureFreshSession(){
+  let stored = readStoredSession();
+  if(!stored) return null;
+  const now = Math.floor(Date.now() / 1000);
+  const expiresAt = stored.expires_at || 0;
+  if(expiresAt && expiresAt > now + 60) return stored;
+  if(!stored.refresh_token) return stored; // can't refresh — return as-is, caller will surface error
+  const refreshed = await refreshTokenSafe(stored.refresh_token);
+  if(!refreshed) return stored;
+  try {
+    localStorage.setItem(
+      'sb-kibqjztozokohqmhqqqf-auth-token',
+      JSON.stringify({ ...refreshed, currentSession: refreshed, expires_at: refreshed.expires_at })
+    );
+  } catch(e){}
+  return refreshed;
 }
 
 // Refresh the access token via direct fetch (racing against a short timeout)
