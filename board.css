@@ -18,8 +18,8 @@
   --sh:0 8px 32px rgba(0,0,0,0.5);
 }
 :root[data-theme="light"] {
-  --bg:#e3e6ec;--surface:#ffffff;--surface2:#f8f9fc;--surface3:#eaedf3;
-  --border:#dde1ea;--border2:#c4cad8;
+  --bg:#c9ced8;--surface:#ffffff;--surface2:#f4f5f9;--surface3:#e4e7ee;
+  --border:#d0d4dd;--border2:#b8becb;
   --text:#1a1d23;--text2:#4a5160;--text3:#8a92a3;
   --accent:#16a34a;--accent-dim:rgba(22,163,74,0.1);--accent-glow:rgba(22,163,74,0.22);
   --red:#dc2626;--red-dim:rgba(220,38,38,0.1);
@@ -82,7 +82,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .pchip.dragging{opacity:.4;}
 .pchip.proj-over{box-shadow:inset 0 2px 0 var(--accent);}
 .dashed-btn{background:none;border:1px dashed var(--border2);color:var(--text3);padding:8px 12px;border-radius:8px;cursor:pointer;font-size:13px;font-family:'Plus Jakarta Sans',sans-serif;white-space:nowrap;margin-top:6px;transition:all .13s;display:block;width:100%;text-align:left;}
-.dashed-btn:hover{border-color:var(--accent);color:var(--accent);}
+.dashed-btn:hover{border-color:rgba(255,255,255,0.85);color:#fff;}
+:root[data-theme="light"] .dashed-btn:hover{border-color:rgba(0,0,0,0.85);color:#0a0a0c;}
 
 /* ── BOARD AREA ── */
 .board-wrap{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative;min-width:0;}
@@ -155,11 +156,10 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
   from { background-position: 0 0; }
   to   { background-position: 380px -200px; }
 }
-/* Light theme: invert white stars to black. invert(1) is set statically (not in keyframe) so the
-   browser can rasterize once instead of re-running the filter every frame. Twinkle uses opacity only. */
+/* Light theme: hide the starfield entirely — the inverted black dots looked harsh on the pale bg. */
 :root[data-theme="light"] .board-wrap::before,
 :root[data-theme="light"] .board-wrap::after{
-  filter: invert(1);
+  display: none;
 }
 
 /* Make sure direct children of .board-wrap render above the stars layer */
@@ -285,9 +285,9 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 :root[data-theme="dark"] .tcard:not(.tcard-sub){
   background:#242427;
 }
-/* Light mode: phase columns — very transparent so the starfield shows through, with a bold border. */
+/* Light mode: phase columns — soft white tint against the grey bg, bold border. */
 :root[data-theme="light"] .col{
-  background:rgba(255,255,255,0.18);
+  background:rgba(255,255,255,0.7);
   backdrop-filter:blur(2px);
   -webkit-backdrop-filter:blur(2px);
   border-color:rgba(0,0,0,0.45);
@@ -338,14 +338,17 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .col-body::-webkit-scrollbar{width:4px;}
 .col-body::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px;}
 .col-add-btn{margin:8px 12px 12px;padding:8px 0;background:none;border:1px dashed var(--border2);border-radius:8px;color:var(--text3);cursor:pointer;font-size:13px;font-family:'Plus Jakarta Sans',sans-serif;transition:all .15s;text-align:center;}
-.col-add-btn:hover{border-color:var(--accent);color:var(--accent);}
+.col-add-btn:hover{border-color:rgba(255,255,255,0.85);color:#fff;}
+:root[data-theme="light"] .col-add-btn:hover{border-color:rgba(0,0,0,0.85);color:#0a0a0c;}
 
 /* ── ADD COLUMN ── */
 .col-new{width:260px;min-width:260px;flex-shrink:0;display:flex;flex-direction:column;gap:10px;scroll-snap-align:end;}
 .col-new-inner{border:1.5px dashed var(--border2);border-radius:14px;padding:22px 18px;display:flex;flex-direction:column;align-items:center;gap:12px;cursor:pointer;transition:all .15s;}
-.col-new-inner:hover{border-color:var(--accent);background:var(--accent-dim);}
+.col-new-inner:hover{border-color:rgba(255,255,255,0.85);background:rgba(255,255,255,0.08);}
 .col-new-inner span{font-size:13px;color:var(--text3);}
-.col-new-inner:hover span{color:var(--accent);}
+.col-new-inner:hover span{color:#fff;}
+:root[data-theme="light"] .col-new-inner:hover{border-color:rgba(0,0,0,0.85);background:rgba(0,0,0,0.05);}
+:root[data-theme="light"] .col-new-inner:hover span{color:#0a0a0c;}
 .col-new-form{display:none;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;}
 .col-new-form.open{display:flex;flex-direction:column;gap:10px;}
 .col-new-form input{background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px 14px;font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;outline:none;}
@@ -357,14 +360,17 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 /* While dragging, surrounding cards translate down to open a gap where the drop will land. */
 .tcard.tcard-shifted{transform:translateY(var(--shift-y,0px)) !important;will-change:transform;}
 .tcard.dragging{will-change:transform,opacity;}
-/* Multi-select: cards selected via Shift/Ctrl+click get an accent ring + faint glow. */
-.tcard.selected{box-shadow:0 0 0 2px var(--accent),0 0 12px rgba(74,222,128,0.35);border-top-color:var(--accent);border-right-color:var(--accent);border-bottom-color:var(--accent);}
-.tcard.selected:hover{box-shadow:0 0 0 2px var(--accent),0 0 16px rgba(74,222,128,0.5);}
-/* Neon-glow tick: faint ring when idle, glowing ✓ (white in dark / black in light) when checked. */
-.tc-tick{width:18px;height:18px;border:1.5px solid rgba(255,255,255,0.35);border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;background:transparent;flex-shrink:0;margin-top:1px;}
-.tc-tick:hover{border-color:rgba(255,255,255,0.85);box-shadow:0 0 6px rgba(255,255,255,0.4);}
-.tc-tick.checked{background:transparent;border-color:rgba(255,255,255,0.7);box-shadow:0 0 6px rgba(255,255,255,0.45),0 0 12px rgba(255,255,255,0.22);}
-.tc-tick.checked::after{content:'✓';color:#fff;font-size:12px;font-weight:900;line-height:1;text-shadow:0 0 3px #fff,0 0 6px rgba(255,255,255,0.8),0 0 10px rgba(255,255,255,0.5);}
+/* Multi-select: cards selected via Shift/Ctrl+click get a neutral white (dark theme) or
+   black (light theme) ring + faint glow. */
+.tcard.selected{box-shadow:0 0 0 2px #fff,0 0 12px rgba(255,255,255,0.32);border-top-color:#fff;border-right-color:#fff;border-bottom-color:#fff;}
+.tcard.selected:hover{box-shadow:0 0 0 2px #fff,0 0 16px rgba(255,255,255,0.48);}
+:root[data-theme="light"] .tcard.selected{box-shadow:0 0 0 2px #0a0a0c,0 0 12px rgba(0,0,0,0.28);border-top-color:#0a0a0c;border-right-color:#0a0a0c;border-bottom-color:#0a0a0c;}
+:root[data-theme="light"] .tcard.selected:hover{box-shadow:0 0 0 2px #0a0a0c,0 0 16px rgba(0,0,0,0.42);}
+/* Apple Reminders style tick — hairline ring idle, white fill (dark) / black fill (light) when checked. */
+.tc-tick{width:18px;height:18px;border:1.5px solid rgba(255,255,255,0.32);border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .14s,border-color .14s,box-shadow .14s;background:transparent;flex-shrink:0;margin-top:1px;}
+.tc-tick:hover{border-color:rgba(255,255,255,0.85);background:rgba(255,255,255,0.08);}
+.tc-tick.checked{background:#fff;border-color:#fff;box-shadow:0 0 0 2px rgba(255,255,255,0.16);}
+.tc-tick.checked::after{content:'✓';color:#0a0a0c;font-size:11px;font-weight:900;line-height:1;}
 .tc-content{flex:1;min-width:0;display:flex;flex-direction:column;gap:7px;}
 .tcard:not(.tcard-sub){border-left:3.5px solid var(--border2);}
 .tcard.u-high:not(.tcard-sub){border-left-color:var(--red);}
@@ -413,7 +419,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 :root[data-theme="dark"] .assign-wrap.unassigned .st-assign{border-color:rgba(255,255,255,0.28);color:rgba(255,255,255,0.55);}
 :root[data-theme="dark"] .tcard:not(.tcard-sub) .tc-row4{border-top-color:rgba(255,255,255,0.12);}
 :root[data-theme="dark"] .dashed-btn{border-color:rgba(255,255,255,0.28);color:rgba(255,255,255,0.6);}
-:root[data-theme="dark"] .dashed-btn:hover{border-color:var(--accent);color:var(--accent);}
+:root[data-theme="dark"] .dashed-btn:hover{border-color:rgba(255,255,255,0.85);color:#fff;}
 .assign-wrap{cursor:pointer;}
 .assign-wrap:hover .b-assign{border-color:var(--accent);color:var(--accent);}
 
@@ -468,10 +474,10 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .drawer-handle{width:36px;height:4px;background:var(--border2);border-radius:2px;margin:0 auto 14px;display:none;}
 @media(max-width:600px){.drawer-handle{display:block;}}
 /* Drawer tick — same neon-glow style. */
-.drawer-check{width:24px;height:24px;border:1.5px solid rgba(255,255,255,0.35);border-radius:50%;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;margin-top:5px;transition:all .15s;background:transparent;}
-.drawer-check:hover{border-color:rgba(255,255,255,0.85);box-shadow:0 0 6px rgba(255,255,255,0.4);}
-.drawer-check.checked{background:transparent;border-color:rgba(255,255,255,0.7);box-shadow:0 0 8px rgba(255,255,255,0.5),0 0 16px rgba(255,255,255,0.25);}
-.drawer-check.checked::after{content:'✓';color:#fff;font-size:14px;font-weight:900;line-height:1;text-shadow:0 0 4px #fff,0 0 8px rgba(255,255,255,0.85),0 0 14px rgba(255,255,255,0.55);}
+.drawer-check{width:24px;height:24px;border:1.5px solid rgba(255,255,255,0.32);border-radius:50%;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;margin-top:5px;transition:background .14s,border-color .14s,box-shadow .14s;background:transparent;}
+.drawer-check:hover{border-color:rgba(255,255,255,0.85);background:rgba(255,255,255,0.08);}
+.drawer-check.checked{background:#fff;border-color:#fff;box-shadow:0 0 0 2px rgba(255,255,255,0.18);}
+.drawer-check.checked::after{content:'✓';color:#0a0a0c;font-size:13px;font-weight:900;line-height:1;}
 .drawer-title-wrap{flex:1;}
 .drawer-title{font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:18px;line-height:1.4;color:var(--text);}
 .drawer-title-input{flex:1;font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:18px;line-height:1.4;color:var(--text);background:transparent;border:1px solid transparent;border-radius:6px;padding:4px 8px;margin-left:-8px;outline:none;width:100%;transition:border-color .12s,background .12s;}
@@ -533,24 +539,24 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 /* Surrounding rows slide down to open a gap where the dragged row will land. */
 .subtask-row.st-shifted{transform:translateY(var(--shift-y,0px));will-change:transform;}
 /* Subtask-row tick — same neon-glow style. */
-.st-check{width:18px;height:18px;border:1.5px solid rgba(255,255,255,0.35);border-radius:50%;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .15s;background:transparent;}
-.st-check:hover{border-color:rgba(255,255,255,0.85);box-shadow:0 0 6px rgba(255,255,255,0.4);}
-.st-check.checked{background:transparent;border-color:rgba(255,255,255,0.7);box-shadow:0 0 6px rgba(255,255,255,0.45),0 0 12px rgba(255,255,255,0.22);}
-.st-check.checked::after{content:'✓';color:#fff;font-size:12px;font-weight:900;line-height:1;text-shadow:0 0 3px #fff,0 0 6px rgba(255,255,255,0.8),0 0 10px rgba(255,255,255,0.5);}
+.st-check{width:18px;height:18px;border:1.5px solid rgba(255,255,255,0.32);border-radius:50%;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:background .14s,border-color .14s,box-shadow .14s;background:transparent;}
+.st-check:hover{border-color:rgba(255,255,255,0.85);background:rgba(255,255,255,0.08);}
+.st-check.checked{background:#fff;border-color:#fff;box-shadow:0 0 0 2px rgba(255,255,255,0.16);}
+.st-check.checked::after{content:'✓';color:#0a0a0c;font-size:11px;font-weight:900;line-height:1;}
 
-/* Light theme: invert glow color to black for contrast against pale bg. */
+/* Light theme: same minimal style but flipped — black fill + white ✓ on white background. */
 :root[data-theme="light"] .tc-tick,
 :root[data-theme="light"] .st-check,
-:root[data-theme="light"] .drawer-check{border-color:rgba(0,0,0,0.4);}
+:root[data-theme="light"] .drawer-check{border-color:rgba(0,0,0,0.32);}
 :root[data-theme="light"] .tc-tick:hover,
 :root[data-theme="light"] .st-check:hover,
-:root[data-theme="light"] .drawer-check:hover{border-color:rgba(0,0,0,0.85);box-shadow:0 0 6px rgba(0,0,0,0.3);}
+:root[data-theme="light"] .drawer-check:hover{border-color:rgba(0,0,0,0.85);background:rgba(0,0,0,0.06);}
 :root[data-theme="light"] .tc-tick.checked,
 :root[data-theme="light"] .st-check.checked,
-:root[data-theme="light"] .drawer-check.checked{border-color:rgba(0,0,0,0.75);box-shadow:0 0 6px rgba(0,0,0,0.35),0 0 12px rgba(0,0,0,0.18);}
+:root[data-theme="light"] .drawer-check.checked{background:#0a0a0c;border-color:#0a0a0c;box-shadow:0 0 0 2px rgba(0,0,0,0.16);}
 :root[data-theme="light"] .tc-tick.checked::after,
 :root[data-theme="light"] .st-check.checked::after,
-:root[data-theme="light"] .drawer-check.checked::after{color:#000;text-shadow:0 0 3px rgba(0,0,0,0.85),0 0 6px rgba(0,0,0,0.55),0 0 10px rgba(0,0,0,0.3);}
+:root[data-theme="light"] .drawer-check.checked::after{color:#fff;}
 .st-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;}
 .st-title{font-size:12.5px;color:var(--text2);line-height:1.4;cursor:pointer;}
 .st-title.done{text-decoration:line-through;color:var(--text3);}
