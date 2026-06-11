@@ -109,7 +109,149 @@ function urgencyLabel(u){ return u==='high'?'URGENT':u.toUpperCase(); }
 // ═══════════════════════════════════════════════
 // RENDER
 // ═══════════════════════════════════════════════
-function render(){ renderProjectBar(); renderDashboard(); renderTimeline(); renderBoard(); }
+function render(){
+  renderProjectBar();
+  renderViewToggle();
+  renderDashboard();
+  if(_viewMode === 'list'){
+    document.getElementById('board').style.display = 'none';
+    const list = document.getElementById('taskList');
+    if(list){ list.style.display = ''; _renderTaskList(list); }
+  } else {
+    document.getElementById('board').style.display = '';
+    const list = document.getElementById('taskList');
+    if(list){ list.style.display = 'none'; }
+    renderBoard();
+  }
+}
+
+// ═══════════════════════════════════════════════
+// VIEW MODE (Board ↔ List) — persisted per device
+// ═══════════════════════════════════════════════
+let _viewMode = 'board';
+try { _viewMode = localStorage.getItem('pt_view_mode') || 'board'; } catch(e){}
+let _listSort = { col: 'startDate', dir: 'desc' };
+let _listFilter = { status: 'all', q: '' };
+
+function setViewMode(mode){
+  if(mode !== 'board' && mode !== 'list') return;
+  _viewMode = mode;
+  try { localStorage.setItem('pt_view_mode', mode); } catch(e){}
+  render();
+}
+
+function renderViewToggle(){
+  const el = document.getElementById('viewToggle');
+  if(!el) return;
+  el.innerHTML = `
+    <button class="seg-btn ${_viewMode==='board'?'active':''}" onclick="setViewMode('board')" title="Board view" aria-label="Board view">
+      <svg class="hdr-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="4" width="6" height="16" rx="1.5"/><rect x="11" y="4" width="6" height="16" rx="1.5" opacity=".55"/><rect x="19" y="4" width="2" height="16" rx="1" opacity=".3"/></svg>
+    </button>
+    <button class="seg-btn ${_viewMode==='list'?'active':''}" onclick="setViewMode('list')" title="List view" aria-label="List view">
+      <svg class="hdr-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
+    </button>
+  `;
+}
+
+function _renderTaskList(container){
+  const proj = getProject();
+  if(!proj){ container.innerHTML = '<div class="list-empty">No project selected.</div>'; return; }
+  const all = S.tasks.filter(t => t.projectId === proj.id);
+  const q = _listFilter.q.toLowerCase();
+  const filtered = all.filter(t => {
+    if(_listFilter.status === 'open' && t.done) return false;
+    if(_listFilter.status === 'done' && !t.done) return false;
+    if(q && !(t.title || '').toLowerCase().includes(q)) return false;
+    return true;
+  });
+  const dir = _listSort.dir === 'asc' ? 1 : -1;
+  const sorted = [...filtered].sort((a, b) => {
+    const va = _listSortValue(a, _listSort.col);
+    const vb = _listSortValue(b, _listSort.col);
+    if(va == null && vb == null) return 0;
+    if(va == null) return 1; // nulls always last
+    if(vb == null) return -1;
+    if(typeof va === 'string') return dir * va.localeCompare(vb);
+    return dir * (va - vb);
+  });
+  const fmtMaybe = ms => ms ? fmtDate(tsToDateInput(ms)) : '';
+  const rowsHtml = sorted.length ? sorted.map(t => {
+    const dur = _taskDurationLabel(t);
+    return `<div class="list-row" onclick="openDrawer('${t.id}')">
+      <div class="lc lc-check"><div class="tc-tick ${t.done?'checked':''}" onclick="event.stopPropagation();handleCheck('${t.id}')"></div></div>
+      <div class="lc lc-title ${t.done?'done':''}">${esc(t.title)}</div>
+      <div class="lc lc-assign">${t.assignee ? '@'+esc(t.assignee) : '<span class="muted">—</span>'}</div>
+      <div class="lc lc-start">${t.startDate ? fmtDate(t.startDate) : '<span class="muted">—</span>'}</div>
+      <div class="lc lc-done">${fmtMaybe(t.completedAt) || '<span class="muted">—</span>'}</div>
+      <div class="lc lc-dur">${dur ? `<span class="lc-dur-badge">⏱ ${dur}</span>` : '<span class="muted">—</span>'}</div>
+    </div>`;
+  }).join('') : '<div class="list-empty">No tasks match the current filters.</div>';
+  container.innerHTML = `
+    <div class="list-filters">
+      <input class="list-search" type="text" placeholder="Filter tasks…" value="${esc(_listFilter.q)}" oninput="_listFilterText(this.value)" />
+      <select class="list-status" onchange="_listFilterStatus(this.value)">
+        <option value="all" ${_listFilter.status==='all'?'selected':''}>All statuses</option>
+        <option value="open" ${_listFilter.status==='open'?'selected':''}>Open</option>
+        <option value="done" ${_listFilter.status==='done'?'selected':''}>Completed</option>
+      </select>
+      <span class="list-count">${sorted.length} of ${all.length}</span>
+    </div>
+    <div class="list-table">
+      <div class="list-row list-head">
+        <div class="lc lc-check"></div>
+        <div class="lc lc-title ${_sortClass('title')}" onclick="_listSortBy('title')">Title</div>
+        <div class="lc lc-assign ${_sortClass('assignee')}" onclick="_listSortBy('assignee')">Assignee</div>
+        <div class="lc lc-start ${_sortClass('startDate')}" onclick="_listSortBy('startDate')">Start</div>
+        <div class="lc lc-done ${_sortClass('completedAt')}" onclick="_listSortBy('completedAt')">Completed</div>
+        <div class="lc lc-dur ${_sortClass('duration')}" onclick="_listSortBy('duration')">Duration</div>
+      </div>
+      ${rowsHtml}
+    </div>
+  `;
+}
+
+function _listSortValue(t, col){
+  switch(col){
+    case 'title':       return (t.title || '').toLowerCase();
+    case 'assignee':    return (t.assignee || '').toLowerCase();
+    case 'startDate':   return parseStartDate(t.startDate);
+    case 'completedAt': return t.completedAt || null;
+    case 'duration':    return getDisplayMs(t) || 0;
+    default:            return null;
+  }
+}
+function _sortClass(col){
+  if(_listSort.col !== col) return 'sortable';
+  return _listSort.dir === 'asc' ? 'sortable sort-asc' : 'sortable sort-desc';
+}
+function _listSortBy(col){
+  if(_listSort.col === col){
+    _listSort.dir = _listSort.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    _listSort.col = col;
+    _listSort.dir = col === 'title' || col === 'assignee' ? 'asc' : 'desc';
+  }
+  const list = document.getElementById('taskList');
+  if(list) _renderTaskList(list);
+}
+function _listFilterText(v){
+  _listFilter.q = v;
+  const list = document.getElementById('taskList');
+  if(list) _renderTaskList(list);
+  // Preserve text-input focus across the re-render.
+  const s = document.querySelector('.list-search');
+  if(s){ s.focus(); try { s.setSelectionRange(s.value.length, s.value.length); } catch(e){} }
+}
+function _listFilterStatus(v){
+  _listFilter.status = v;
+  const list = document.getElementById('taskList');
+  if(list) _renderTaskList(list);
+}
+function _taskDurationLabel(t){
+  let timeFmt = fmtMs(getDisplayMs(t));
+  if(t.done && !timeFmt) timeFmt = '<1d';
+  return timeFmt;
+}
 
 function renderDashboard(){
   const el = document.getElementById('dashStats');
@@ -170,10 +312,12 @@ function saveProjectOrder(orderedIds){
 }
 
 function renderProjectBar(){
-  if(!S.activeProject && S.projects.length) S.activeProject = S.projects[0].id;
+  const ordered = sortedProjects();
+  // Default to the top of the user's saved arrangement (not the raw DB order).
+  if(!S.activeProject && ordered.length) S.activeProject = ordered[0].id;
   const invBtn = document.getElementById('inviteBtn');
   if(invBtn) invBtn.style.display = S.activeProject ? '' : 'none';
-  const list = sortedProjects();
+  const list = ordered;
   document.getElementById('projectBar').innerHTML =
     list.map(p =>
       `<div class="pchip ${p.id===S.activeProject?'active':''}"
@@ -239,21 +383,39 @@ function currentActor(){
 
 // Auto-hide threshold: tasks marked done more than 30 days ago
 const OLD_DONE_MS = 30 * 86400000;
+// Tasks completed more than this long ago are auto-deleted (with their attachments)
+// to keep database + storage costs bounded.
+const AUTO_DELETE_MS = 3 * 365 * 86400000;
+
+// Permanently delete all tasks (with screenshots from storage) completed >3 years ago.
+// Runs once per session after hydrate; safe to call repeatedly.
+async function purgeExpiredTasks(){
+  const now = Date.now();
+  const expired = S.tasks.filter(t => t.done && t.completedAt && (now - t.completedAt) > AUTO_DELETE_MS);
+  if(!expired.length) return;
+  const paths = [];
+  expired.forEach(t => {
+    try { paths.push(...collectTaskPaths(t)); } catch(e){}
+  });
+  if(paths.length && typeof removePathsFromStorage === 'function'){
+    try { await removePathsFromStorage(paths); }
+    catch(e){ console.warn('[purge] storage cleanup failed', e); }
+  }
+  const expiredIds = new Set(expired.map(t => t.id));
+  S.tasks = S.tasks.filter(t => !expiredIds.has(t.id));
+  if(typeof save === 'function') save();
+  if(typeof render === 'function') render();
+  console.log('[purge] auto-deleted', expired.length, 'tasks completed >3 years ago');
+}
 function isOldDone(t){
   return !!(t.done && t.completedAt && (Date.now() - t.completedAt) > OLD_DONE_MS);
 }
-// True if the task is scheduled to start on a future date — but only for
-// auto-generated recurring tasks. Manually-created future tasks stay visible.
-function isFutureScheduled(t){
-  if(!t || t.done || !t.startDate) return false;
-  const fromRecurrence = !!t.fromRecurrence
-    || (Array.isArray(t.history) && t.history[0]?.reason === 'recurring');
-  if(!fromRecurrence) return false;
-  const today = new Date();
-  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
-  const startMs = parseStartDate(t.startDate);
-  return typeof startMs === 'number' && startMs > todayStart;
-}
+// Previously hid auto-generated recurring tasks until their start date arrived.
+// Recurring tasks now open immediately when the previous instance is completed
+// (startDate=today, due=next repeat date), so nothing should be hidden by this check.
+// Kept as a no-op stub so call sites still work; old hidden recurring rows in storage
+// will surface again on next render.
+function isFutureScheduled(t){ return false; }
 function getOldDoneShown(){
   try { return JSON.parse(localStorage.getItem('pt_show_old_done') || '{}'); }
   catch(e){ return {}; }
@@ -341,7 +503,35 @@ function renderBoard(){
     </div>
   </div>`;
 
+  // Preserve scroll positions across the innerHTML swap — column bodies + horizontal board scroll.
+  const _colScrolls = {};
+  board.querySelectorAll('.col[data-ph]').forEach(col => {
+    const body = col.querySelector('.col-body');
+    if(body) _colScrolls[col.dataset.ph] = body.scrollTop;
+  });
+  const _boardX = board.scrollLeft;
   board.innerHTML=html;
+  board.scrollLeft = _boardX;
+  board.querySelectorAll('.col[data-ph]').forEach(col => {
+    const body = col.querySelector('.col-body');
+    const y = _colScrolls[col.dataset.ph];
+    if(body && typeof y === 'number') body.scrollTop = y;
+  });
+}
+
+// Replace a drawer body's innerHTML without losing the body's vertical scroll or the
+// scroll position of any inner subtask-list. Synchronous restore beats layout races.
+function _drawerBodySetHtml(html){
+  const el = document.getElementById('drawerBody');
+  if(!el){ return; }
+  const ownY = el.scrollTop;
+  const subYs = [];
+  el.querySelectorAll('.subtask-list').forEach(ll => subYs.push(ll.scrollTop));
+  el.innerHTML = html;
+  el.scrollTop = ownY;
+  el.querySelectorAll('.subtask-list').forEach((ll, i) => {
+    if(typeof subYs[i] === 'number') ll.scrollTop = subYs[i];
+  });
 }
 
 function renderCard(t){
@@ -377,7 +567,8 @@ function renderCard(t){
 
   const imgs=t.screenshots?.slice(0,2).map(s=>`<img class="tc-img" src="${shotUrl(s)}" />`).join('')||'';
 
-  return `<div class="tcard u-${t.urgency} ${t.done?'done':''} ${isReopened?'is-reopened':''}" id="tc-${t.id}" draggable="true" ondragstart="dragStart(event,'${t.id}')" ondragend="dragEnd(event)" onclick="openDrawer('${t.id}')">
+  const selectedCls = _selectedTaskIds.has(t.id) ? ' selected' : '';
+  return `<div class="tcard u-${t.urgency} ${t.done?'done':''} ${isReopened?'is-reopened':''}${selectedCls}" id="tc-${t.id}" draggable="true" ondragstart="dragStart(event,'${t.id}')" ondragend="dragEnd(event)" onclick="onCardClick(event,'${t.id}')">
     <div class="tc-tick ${t.done?'checked':''}" onclick="event.stopPropagation();handleCheck('${t.id}')"></div>
     <div class="tc-content">${row1}${row2}${row3}
       ${imgs?`<div class="tc-attach-thumb">${imgs}</div>`:''}
@@ -415,6 +606,72 @@ function renderSubCard(t,s,idx){
 // ═══════════════════════════════════════════════
 let _drawerId=null;
 let _dragTaskId=null;
+
+// ═══════════════════════════════════════════════
+// TASK MULTI-SELECT (Shift/Ctrl click on tcards, then drag the group)
+// ═══════════════════════════════════════════════
+let _selectedTaskIds = new Set();
+let _lastSelectedId = null;
+
+function clearTaskSelection(rerender = true){
+  if(!_selectedTaskIds.size && !_lastSelectedId) return;
+  _selectedTaskIds.clear();
+  _lastSelectedId = null;
+  if(rerender) render();
+}
+
+// Range-select main tasks within the same phase as the clicked card, between the
+// last-selected card and this one.
+function rangeSelectTask(id){
+  const t = S.tasks.find(t => t.id === id); if(!t) return;
+  const proj = getProject(); if(!proj) return;
+  const phaseTasks = S.tasks
+    .filter(x => x.projectId === proj.id && x.phase === t.phase && !x.done)
+    .sort((a,b) => (typeof a.order==='number'?a.order:9999) - (typeof b.order==='number'?b.order:9999));
+  const ids = phaseTasks.map(x => x.id);
+  const curIdx = ids.indexOf(id); if(curIdx < 0) return;
+  const lastIdx = _lastSelectedId ? ids.indexOf(_lastSelectedId) : -1;
+  const [a, b] = lastIdx >= 0
+    ? [Math.min(lastIdx, curIdx), Math.max(lastIdx, curIdx)]
+    : [curIdx, curIdx];
+  for(let i = a; i <= b; i++) _selectedTaskIds.add(ids[i]);
+  _lastSelectedId = id;
+  render();
+}
+
+// Main entry point for clicking a tcard. Plain click opens the drawer (clearing any
+// active selection); Shift = range-select; Ctrl/Cmd = toggle single.
+function onCardClick(e, id){
+  e.stopPropagation();
+  if(e.shiftKey){
+    rangeSelectTask(id);
+    return;
+  }
+  if(e.ctrlKey || e.metaKey){
+    if(_selectedTaskIds.has(id)) _selectedTaskIds.delete(id);
+    else _selectedTaskIds.add(id);
+    _lastSelectedId = id;
+    render();
+    return;
+  }
+  if(_selectedTaskIds.size){
+    _selectedTaskIds.clear();
+    _lastSelectedId = null;
+    render();
+  }
+  openDrawer(id);
+}
+
+// Clicking on empty board space clears the selection.
+document.addEventListener('click', e => {
+  if(!_selectedTaskIds.size) return;
+  // Ignore clicks inside any tcard, the drawer, modals, popup, or the assign picker
+  if(e.target.closest('.tcard, .drawer, .modal, #assignPop, .ctx, .col-head, .col-add-btn, .col-menu-btn')) return;
+  clearTaskSelection();
+});
+document.addEventListener('keydown', e => {
+  if(e.key === 'Escape' && _selectedTaskIds.size) clearTaskSelection();
+});
 let _drawerSubIdx=null;
 let _drawerNestIdx=null;
 
@@ -548,7 +805,7 @@ function renderDrawer(){
     body+=`<div class="d-section"><div class="d-section-label">Activity</div><div class="h-list">${histHtml}</div></div>`;
   }
 
-  document.getElementById('drawerBody').innerHTML=body;
+  _drawerBodySetHtml(body);
 
   // FOOT
   document.getElementById('drawerFoot').innerHTML=`
@@ -715,7 +972,7 @@ function renderNestedDrawer(){
   </button>`;
   body+=`<div class="d-section"><div class="d-section-label">Screenshots (${shots.length})</div><div class="screenshots-grid">${ssGrid}</div></div>`;
 
-  document.getElementById('drawerBody').innerHTML=body;
+  _drawerBodySetHtml(body);
   document.getElementById('drawerFoot').innerHTML=`
     <button class="btn btn-danger btn-sm" onclick="deleteNestedFromDrawer()">🗑 Delete Subtask</button>`;
 }
@@ -900,7 +1157,7 @@ function renderSubtaskDrawer(){
     body+=`<div class="d-section"><div class="d-section-label">Activity</div><div class="h-list">${histHtml}</div></div>`;
   }
 
-  document.getElementById('drawerBody').innerHTML=body;
+  _drawerBodySetHtml(body);
   document.getElementById('drawerFoot').innerHTML=`
     <button class="btn btn-danger btn-sm" onclick="deleteSubtaskFromDrawer('${t.id}',${_drawerSubIdx})">🗑 Delete Subtask</button>`;
 }
@@ -1008,6 +1265,16 @@ function formatRepeatInfo(r){
     const m = (typeof r.yearMonth === 'number') ? r.yearMonth : 0;
     return 'Repeats yearly on ' + monthNames[m] + ' ' + (r.yearDay || 1);
   }
+  if(r.freq === 'custom'){
+    const interval = Math.max(1, r.interval || 1);
+    const unit = r.unit || 'months';
+    const unitWord = interval === 1 ? unit.slice(0, -1) : unit; // "month" vs "months"
+    const prefix = interval === 1 ? 'Repeats every ' + unitWord : 'Repeats every ' + interval + ' ' + unitWord;
+    if(unit === 'months') return prefix + ' on the ' + ord(r.monthDay || 1);
+    if(unit === 'years')  return prefix + ' on ' + monthNames[r.yearMonth || 0] + ' ' + (r.monthDay || 1);
+    if(unit === 'weeks')  return prefix + ' on ' + dayNames[r.weekday || 0];
+    return prefix;
+  }
   return '';
 }
 
@@ -1044,6 +1311,35 @@ function nextRepeatDate(rule, from){
     const lastDayOfMonth = new Date(y, tm + 1, 0).getDate();
     return new Date(y, tm, Math.min(td, lastDayOfMonth));
   }
+  if(rule.freq === 'custom'){
+    const interval = Math.max(1, rule.interval || 1);
+    const unit = rule.unit || 'months';
+    if(unit === 'days'){
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate() + interval);
+    }
+    if(unit === 'weeks'){
+      // Jump `interval` weeks forward, then snap to the configured weekday (forward only).
+      const base = new Date(d.getFullYear(), d.getMonth(), d.getDate() + interval * 7);
+      const target = (typeof rule.weekday === 'number') ? rule.weekday : base.getDay();
+      const diff = (target - base.getDay() + 7) % 7;
+      return new Date(base.getFullYear(), base.getMonth(), base.getDate() + diff);
+    }
+    if(unit === 'months'){
+      const targetDay = Math.min(Math.max(rule.monthDay || d.getDate(), 1), 31);
+      const totalMonths = d.getFullYear() * 12 + d.getMonth() + interval;
+      const y = Math.floor(totalMonths / 12);
+      const m = totalMonths % 12;
+      const lastDay = new Date(y, m + 1, 0).getDate();
+      return new Date(y, m, Math.min(targetDay, lastDay));
+    }
+    if(unit === 'years'){
+      const tm = (typeof rule.yearMonth === 'number') ? rule.yearMonth : d.getMonth();
+      const td = Math.min(Math.max(rule.monthDay || d.getDate(), 1), 31);
+      const y = d.getFullYear() + interval;
+      const lastDay = new Date(y, tm + 1, 0).getDate();
+      return new Date(y, tm, Math.min(td, lastDay));
+    }
+  }
   return d;
 }
 
@@ -1055,17 +1351,23 @@ function handleCheck(id){
     if(!t.history) t.history=[];
     t.history.push({type:'completed',ts:now,by:currentActor(),elapsed:t.startedAt?now-t.startedAt:null,prevStart:t.startedAt||null});
     t.startedAt=null;
-    // If this task has a repeat rule, also create the next recurring instance
-    // (separate task) with start+due set to the next occurrence.
+    // If this task has a repeat rule, spawn the next recurring instance immediately.
+    // It opens NOW (visible) with startDate = today and due = the next computed repeat date,
+    // so the user has the next iteration ready to work on right away.
+    // Anchor the schedule on the previous task's due date so cadence stays calendar-locked
+    // ("every 2 months on the 15th" always means the 15th, no drift from late check-offs).
+    // Fall back to completion time when no due date is set.
     if(t.repeat && t.repeat.freq && t.repeat.freq !== 'off'){
-      const next = nextRepeatDate(t.repeat, new Date());
+      const anchorMs = parseStartDate(t.due) || Date.now();
+      const next = nextRepeatDate(t.repeat, new Date(anchorMs));
       const nextStr = tsToDateInput(next.getTime());
+      const todayStr = tsToDateInput(now);
       function cloneNested(n){
         return {
           id: uid(), title: n.title, desc: n.desc || '', assignee: n.assignee || null,
           done: false, completedAt: null,
-          startedAt: next.getTime(), createdAt: now,
-          startDate: nextStr, due: n.due || '', elapsed: 0,
+          startedAt: now, createdAt: now,
+          startDate: todayStr, due: n.due || '', elapsed: 0,
           screenshots: [...(n.screenshots || [])],
           fromRecurrence: true,
           history: [{ type: 'created', ts: now, reason: 'recurring', by: currentActor() }]
@@ -1075,8 +1377,8 @@ function handleCheck(id){
         return {
           id: uid(), title: s.title, desc: s.desc || '', assignee: s.assignee || null,
           done: false, completedAt: null,
-          startedAt: next.getTime(), createdAt: now,
-          startDate: nextStr, due: s.due || '', elapsed: 0,
+          startedAt: now, createdAt: now,
+          startDate: todayStr, due: s.due || '', elapsed: 0,
           phase: s.phase || null,
           screenshots: [...(s.screenshots || [])],
           subtasks: (s.subtasks || []).map(cloneNested),
@@ -1092,10 +1394,10 @@ function handleCheck(id){
         phase: t.phase,
         urgency: t.urgency,
         assignee: t.assignee || '',
-        due: nextStr,
-        startDate: nextStr,
+        due: nextStr,        // ← due = the next computed repeat date
+        startDate: todayStr, // ← visible/open from today, not the next date
         done: false, completedAt: null,
-        startedAt: next.getTime(), createdAt: now,
+        startedAt: now, createdAt: now,
         screenshots: [...(t.screenshots || [])],
         subtasks: (t.subtasks || []).map(cloneSub),
         repeat: { ...t.repeat },
@@ -1246,6 +1548,16 @@ function _populateRepeatDropdowns(){
     for(let i = 1; i <= 31; i++) html += `<option value="${i}">${i}</option>`;
     yearDay.innerHTML = html;
   }
+  const customDay = document.getElementById('fRepeatCustomMonthDay');
+  if(customDay && !customDay.options.length){
+    let html = '';
+    for(let i = 1; i <= 31; i++) html += `<option value="${i}">${i}</option>`;
+    customDay.innerHTML = html;
+  }
+  const customYearMonth = document.getElementById('fRepeatCustomYearMonth');
+  if(customYearMonth && !customYearMonth.options.length){
+    customYearMonth.innerHTML = _MONTH_NAMES.map((n,i) => `<option value="${i}">${n}</option>`).join('');
+  }
 }
 
 function loadRepeatIntoForm(repeat){
@@ -1272,6 +1584,17 @@ function loadRepeatIntoForm(repeat){
   document.getElementById('fRepeatYearlyRow').style.display = (r.freq === 'yearly') ? '' : 'none';
   document.getElementById('fRepeatYearMonth').value = String(typeof r.yearMonth === 'number' ? r.yearMonth : today.getMonth());
   document.getElementById('fRepeatYearDay').value = String(r.yearDay || today.getDate());
+  // Custom: every X [unit], with sub-fields driven by unit.
+  document.getElementById('fRepeatCustomRow').style.display = (r.freq === 'custom') ? '' : 'none';
+  document.getElementById('fRepeatInterval').value = String(r.interval || 1);
+  document.getElementById('fRepeatUnit').value = r.unit || 'months';
+  document.getElementById('fRepeatCustomMonthDay').value = String(r.monthDay || today.getDate());
+  document.getElementById('fRepeatCustomYearMonth').value = String(typeof r.yearMonth === 'number' ? r.yearMonth : today.getMonth());
+  const customWd = (typeof r.weekday === 'number') ? r.weekday : today.getDay();
+  document.querySelectorAll('#fRepeatCustomWeekdayRow input[type="radio"]').forEach(rb => {
+    rb.checked = parseInt(rb.dataset.d, 10) === customWd;
+  });
+  if(r.freq === 'custom') onRepeatUnitChange();
 }
 
 function readRepeatFromForm(){
@@ -1286,6 +1609,19 @@ function readRepeatFromForm(){
   } else if(freq === 'yearly'){
     out.yearMonth = parseInt(document.getElementById('fRepeatYearMonth').value, 10) || 0;
     out.yearDay = parseInt(document.getElementById('fRepeatYearDay').value, 10) || 1;
+  } else if(freq === 'custom'){
+    out.interval = Math.max(1, parseInt(document.getElementById('fRepeatInterval').value, 10) || 1);
+    out.unit = document.getElementById('fRepeatUnit').value || 'months';
+    if(out.unit === 'months' || out.unit === 'years'){
+      out.monthDay = parseInt(document.getElementById('fRepeatCustomMonthDay').value, 10) || 1;
+    }
+    if(out.unit === 'years'){
+      out.yearMonth = parseInt(document.getElementById('fRepeatCustomYearMonth').value, 10) || 0;
+    }
+    if(out.unit === 'weeks'){
+      const sel = document.querySelector('#fRepeatCustomWeekdayRow input[type="radio"]:checked');
+      out.weekday = sel ? parseInt(sel.dataset.d, 10) : new Date().getDay();
+    }
   }
   return out;
 }
@@ -1295,6 +1631,16 @@ function onRepeatFreqChange(){
   document.getElementById('fRepeatWeekdaysRow').style.display = freq === 'weekly' ? '' : 'none';
   document.getElementById('fRepeatMonthlyRow').style.display = freq === 'monthly' ? '' : 'none';
   document.getElementById('fRepeatYearlyRow').style.display = freq === 'yearly' ? '' : 'none';
+  document.getElementById('fRepeatCustomRow').style.display = freq === 'custom' ? '' : 'none';
+  if(freq === 'custom') onRepeatUnitChange();
+}
+
+// Toggle the right sub-fields under "Custom" based on selected unit.
+function onRepeatUnitChange(){
+  const unit = document.getElementById('fRepeatUnit').value;
+  document.getElementById('fRepeatCustomDayRow').style.display = (unit === 'months' || unit === 'years') ? '' : 'none';
+  document.getElementById('fRepeatCustomMonthRow').style.display = (unit === 'years') ? '' : 'none';
+  document.getElementById('fRepeatCustomWeekdayRow').style.display = (unit === 'weeks') ? '' : 'none';
 }
 
 function openAddTask(ph){
@@ -1894,76 +2240,12 @@ function buildGantt(tasks){
   </div>`;
 }
 
-// REPORT
+// REPORT — now shows only the project timeline (gantt). Previous stats were removed.
 document.getElementById('reportBtn').addEventListener('click',()=>{
   const proj=getProject(); if(!proj) return;
-  const all=getAllTasks(proj.id);
-  const total=all.length,doneN=all.filter(t=>t.done).length;
-  const overdue=all.filter(isOverdue).length;
-  const pct=total?Math.round(doneN/total*100):0;
-  const reopenedN=all.filter(t=>(t.history||[]).some(h=>h.type==='reopened')).length;
-  const totalMs=all.reduce((s,t)=>s+(t.history||[]).filter(h=>h.type==='completed').reduce((a,h)=>a+(h.elapsed||0),0),0);
-
-  const phRows=proj.phases.map(ph=>{
-    const pts=getColTasks(proj.id,ph);
-    const d=pts.filter(t=>t.done).length;
-    const p=pts.length?Math.round(d/pts.length*100):0;
-    const ms=pts.reduce((s,t)=>s+(t.history||[]).filter(h=>h.type==='completed').reduce((a,h)=>a+(h.elapsed||0),0),0);
-    return{ph,total:pts.length,done:d,pct:p,ms};
-  }).filter(r=>r.total>0);
-
-  const high=all.filter(t=>t.urgency==='high'&&!t.done).length;
-  const med=all.filter(t=>t.urgency==='medium'&&!t.done).length;
-  const low=all.filter(t=>t.urgency==='low'&&!t.done).length;
-
-  let h='';
-
-  if(totalMs>0) h+=`<div class="rs"><div class="rs-title">Time Tracked</div>
-    <div class="rcard" style="text-align:left;padding:14px 18px">
-      <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:22px;font-weight:800;color:var(--accent)">${fmtMs(totalMs)||'<1m'}</div>
-      <div style="font-size:11px;color:var(--text2);margin-top:3px">Auto-tracked across all completed tasks</div>
-    </div></div>`;
-
-  if(phRows.length){
-    h+=`<div class="rs"><div class="rs-title">Phase Breakdown</div>`
-      +phRows.map(r=>`<div class="pbar-item">
-        <div class="pbar-label">${esc(r.ph)}</div>
-        <div class="pbar-track"><div class="pbar-fill" style="width:${r.pct}%"></div></div>
-        <div class="pbar-pct">${r.pct}%</div>
-        ${r.ms&&fmtMs(r.ms)?`<div style="font-size:10px;color:var(--text3);width:40px;text-align:right">${fmtMs(r.ms)}</div>`:''}
-      </div>`).join('')+`</div>`;
-  }
-
-  const pending=all.filter(t=>!t.done).sort((a,b)=>({high:0,medium:1,low:2}[a.urgency]||1)-({high:0,medium:1,low:2}[b.urgency]||1));
-  if(pending.length){
-    h+=`<div class="rs"><div class="rs-title">Pending (${pending.length})</div>
-      <table class="rtable"><tr><th>Task</th><th>Phase</th><th>Urgency</th><th>Assignee</th><th>Due</th></tr>
-      ${pending.map(t=>`<tr><td><span class="tn">${esc(t.title)}</span></td><td>${esc(t.phase)}</td>
-        <td><span class="badge b-${t.urgency}">${urgencyLabel(t.urgency)}</span></td>
-        <td>${t.assignee?'@'+esc(t.assignee):'—'}</td>
-        <td style="${isOverdue(t)?'color:var(--red)':''}">${t.due?fmtDate(t.due):'—'}</td></tr>`).join('')}
-      </table></div>`;
-  }
-
-  const rlogs=all.flatMap(t=>(t.history||[]).filter(h=>h.type==='reopened').map(h=>({title:t.title,h})));
-  if(rlogs.length){
-    h+=`<div class="rs"><div class="rs-title">Reopen Log</div>
-      <table class="rtable"><tr><th>Task</th><th>When</th><th>Reason</th></tr>
-      ${rlogs.map(({title,h:e})=>`<tr><td><span class="tn">${esc(title)}</span></td>
-        <td style="white-space:nowrap">${fmtTs(e.ts)}</td>
-        <td style="color:var(--orange)">${e.reason?esc(e.reason):'<em style="color:var(--text3)">—</em>'}</td></tr>`).join('')}
-      </table></div>`;
-  }
-
-  if(high||med||low) h+=`<div class="rs"><div class="rs-title">Open by Urgency</div>
-    <div class="rgrid" style="grid-template-columns:repeat(3,1fr)">
-      <div class="rcard"><div class="num" style="color:var(--red)">${high}</div><div class="lbl">Urgent</div></div>
-      <div class="rcard"><div class="num" style="color:var(--amber)">${med}</div><div class="lbl">Medium</div></div>
-      <div class="rcard"><div class="num" style="color:var(--blue)">${low}</div><div class="lbl">Low</div></div>
-    </div></div>`;
-
-  document.getElementById('reportTitle').textContent=`📊 ${proj.name}`;
-  document.getElementById('reportContent').innerHTML=h;
+  const gantt=buildGantt(getAllTasks(proj.id)) || '<div style="color:var(--text3);font-size:13px;padding:20px 0">No timeline data for this project yet.</div>';
+  document.getElementById('reportTitle').textContent=`🗓 ${proj.name} — Timeline`;
+  document.getElementById('reportContent').innerHTML=gantt;
   document.getElementById('reportModal').classList.add('open');
 });
 function closeReportModal(){ document.getElementById('reportModal').classList.remove('open'); }
@@ -1980,12 +2262,27 @@ function closeReportModal(){ document.getElementById('reportModal').classList.re
 let _dragHeight=60;
 function dragStart(e,id){
   e.stopPropagation();
+  // If dragging an unselected card, treat it as a single-card drag (and clear any active selection).
+  if(!_selectedTaskIds.has(id)){
+    if(_selectedTaskIds.size){ _selectedTaskIds.clear(); _lastSelectedId=null; }
+  }
   _dragTaskId=id;
   const el=document.getElementById('tc-'+id);
   if(el) _dragHeight=el.offsetHeight||60;
+  // Multi-drag: pad the shift gap by the number of additional selected cards.
+  const extra = Math.max(0, _selectedTaskIds.size - 1);
+  _dragHeight = _dragHeight + extra * (_dragHeight + 8);
   e.dataTransfer.effectAllowed='move';
   e.dataTransfer.setData('text/plain',id);
-  setTimeout(()=>{ if(el) el.classList.add('dragging'); },0);
+  setTimeout(()=>{
+    if(el) el.classList.add('dragging');
+    // Fade the other selected cards too so the user sees the whole group moving.
+    _selectedTaskIds.forEach(sid => {
+      if(sid === id) return;
+      const sel = document.getElementById('tc-'+sid);
+      if(sel) sel.classList.add('dragging');
+    });
+  },0);
 }
 function dragEnd(){
   clearAllDragShifts();
@@ -2242,12 +2539,30 @@ function colDrop(e, targetPh){
     const colBody = e.currentTarget.querySelector('.col-body');
     const dropIdx = colBody ? getDropIndex(colBody, e.clientY) : 0;
     if(_dragTaskId){
-      const t = S.tasks.find(t => t.id === _dragTaskId);
-      if(t){
+      // Multi-select drop: move every selected task to the target phase, preserving their
+      // relative on-board order and slotting them contiguously starting at dropIdx.
+      const groupIds = (_selectedTaskIds.size > 1 && _selectedTaskIds.has(_dragTaskId))
+        ? [..._selectedTaskIds]
+        : [_dragTaskId];
+      // Preserve current order across the group.
+      groupIds.sort((a, b) => {
+        const ta = S.tasks.find(t => t.id === a);
+        const tb = S.tasks.find(t => t.id === b);
+        const oa = typeof ta?.order === 'number' ? ta.order : 9999;
+        const ob = typeof tb?.order === 'number' ? tb.order : 9999;
+        return oa - ob;
+      });
+      const focusId = _dragTaskId;
+      groupIds.forEach((sid, i) => {
+        const t = S.tasks.find(t => t.id === sid);
+        if(!t) return;
         t.phase = targetPh;
-        reorderPhaseItems(targetPh, 'task', t.id, dropIdx);
-        save(); render(); if(_drawerId === _dragTaskId) renderDrawer();
-      }
+        reorderPhaseItems(targetPh, 'task', t.id, dropIdx + i);
+      });
+      // Clear selection after the move so the next click doesn't carry stale state.
+      _selectedTaskIds.clear();
+      _lastSelectedId = null;
+      save(); render(); if(_drawerId === focusId) renderDrawer();
       _dragTaskId = null;
     } else {
       const t = S.tasks.find(t => t.id === _dragSubInfo.taskId);

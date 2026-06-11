@@ -165,16 +165,71 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 /* Make sure direct children of .board-wrap render above the stars layer */
 .board-wrap > *{position:relative;z-index:1;}
 
-/* ── DASHBOARD (top stats row) — thin row, full width via 4-col grid ── */
+/* ── VIEW TOGGLE (Board ↔ List) — compact icon-only segmented control in the header ── */
+.seg-toggle{display:inline-flex;background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden;flex-shrink:0;height:32px;}
+.seg-toggle:empty{display:none;}
+.seg-toggle .seg-btn{background:transparent;border:none;color:var(--text3);cursor:pointer;padding:0 9px;display:flex;align-items:center;justify-content:center;transition:all .12s;line-height:1;}
+.seg-toggle .seg-btn:hover{color:var(--text);background:var(--surface2);}
+.seg-toggle .seg-btn.active{color:var(--accent);background:var(--accent-dim);}
+.seg-toggle .seg-btn + .seg-btn{border-left:1px solid var(--border);}
+.seg-toggle .hdr-icon{width:16px;height:16px;margin:0;}
+@media(max-width:768px){
+  .seg-toggle{height:30px;}
+  .seg-toggle .seg-btn{padding:0 7px;}
+  .seg-toggle .hdr-icon{width:14px;height:14px;}
+}
+
+/* ── LIST VIEW ── */
+.task-list{flex:1;display:flex;flex-direction:column;padding:12px 20px 20px;overflow-y:auto;position:relative;z-index:1;min-height:0;}
+.list-filters{display:flex;gap:10px;margin-bottom:10px;align-items:center;flex-wrap:wrap;}
+.list-search{flex:1;min-width:200px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 12px;font-family:inherit;font-size:13px;outline:none;}
+.list-search:focus{border-color:var(--accent);}
+.list-status{background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 12px;font-family:inherit;font-size:13px;outline:none;cursor:pointer;}
+.list-status:focus{border-color:var(--accent);}
+.list-count{font-size:12px;color:var(--text3);flex-shrink:0;}
+.list-table{background:var(--surface2);border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+.list-row{display:grid;grid-template-columns:42px minmax(0,2fr) minmax(0,1fr) 110px 110px 90px;padding:9px 14px;gap:10px;border-bottom:1px solid var(--border);align-items:center;cursor:pointer;transition:background .12s;}
+.list-row:last-child{border-bottom:none;}
+.list-row:not(.list-head):hover{background:var(--surface3);}
+.list-row.list-head{background:var(--surface3);color:var(--text3);font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;cursor:default;padding:8px 14px;}
+.list-row.list-head .lc.sortable{cursor:pointer;user-select:none;}
+.list-row.list-head .lc.sortable:hover{color:var(--text);}
+.lc{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}
+.lc-title{font-size:14px;color:var(--text);font-weight:500;}
+.lc-title.done{text-decoration:line-through;color:var(--text3);}
+.lc-start, .lc-done{font-size:12.5px;color:var(--text2);}
+.lc-dur{font-size:12px;}
+.lc-dur-badge{background:var(--accent-dim);color:var(--accent);border:1px solid rgba(74,222,128,.2);border-radius:8px;padding:1px 7px;font-size:11px;white-space:nowrap;}
+.lc-assign{font-size:13px;color:var(--text2);}
+.lc .muted{color:var(--text3);}
+.sort-asc::after{content:' ↑';color:var(--accent);}
+.sort-desc::after{content:' ↓';color:var(--accent);}
+.list-empty{padding:32px 20px;text-align:center;color:var(--text3);font-size:13px;}
+
+/* List view: tick uses the same neon style — sized to row height. */
+.list-row .tc-tick{margin-top:0;}
+
+/* Mobile: drop Completed + Duration columns, tighten everything. */
+@media(max-width:768px){
+  .task-list{padding:8px 12px 14px;}
+  .list-row{grid-template-columns:30px minmax(0,1.8fr) minmax(0,1fr) 78px;padding:6px 10px;gap:6px;}
+  .list-row.list-head{padding:6px 10px;font-size:9.5px;}
+  .lc-done, .lc-dur{display:none;}
+  .lc-title{font-size:13px;}
+  .lc-start{font-size:11.5px;}
+  .lc-assign{font-size:12px;}
+}
+
+/* ── DASHBOARD (top stats row) — 2-row grid per card so all 4 wrap identically ── */
 .dash{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:8px 20px 0;flex-shrink:0;}
 .dash:empty{display:none;}
-.dash .d-card{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:5px 10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;line-height:1.1;}
-.dash .d-lbl{font-size:10px;font-weight:600;letter-spacing:.4px;color:var(--text3);text-transform:uppercase;}
-.dash .d-num{font-size:16px;font-weight:800;color:var(--text);line-height:1.1;}
+.dash .d-card{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 10px;display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-rows:auto auto;column-gap:7px;row-gap:1px;align-items:baseline;overflow:hidden;line-height:1.15;}
+.dash .d-lbl{grid-column:1/-1;font-size:10px;font-weight:600;letter-spacing:.4px;color:var(--text3);text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}
+.dash .d-num{grid-column:1;grid-row:2;font-size:17px;font-weight:800;color:var(--text);line-height:1.1;align-self:baseline;}
 .dash .d-num.pct-accent{color:var(--accent);}
 .dash .d-num.red{color:var(--red);}
 .dash .d-num.orange{color:var(--orange);}
-.dash .d-sub{font-size:10px;color:var(--text3);}
+.dash .d-sub{grid-column:2;grid-row:2;font-size:10px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;align-self:baseline;}
 
 /* ── TIMELINE (collapsible) — compact thin row ── */
 .tl-section{padding:8px 20px 0;flex-shrink:0;}
@@ -302,6 +357,9 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 /* While dragging, surrounding cards translate down to open a gap where the drop will land. */
 .tcard.tcard-shifted{transform:translateY(var(--shift-y,0px)) !important;will-change:transform;}
 .tcard.dragging{will-change:transform,opacity;}
+/* Multi-select: cards selected via Shift/Ctrl+click get an accent ring + faint glow. */
+.tcard.selected{box-shadow:0 0 0 2px var(--accent),0 0 12px rgba(74,222,128,0.35);border-top-color:var(--accent);border-right-color:var(--accent);border-bottom-color:var(--accent);}
+.tcard.selected:hover{box-shadow:0 0 0 2px var(--accent),0 0 16px rgba(74,222,128,0.5);}
 /* Neon-glow tick: faint ring when idle, glowing ✓ (white in dark / black in light) when checked. */
 .tc-tick{width:18px;height:18px;border:1.5px solid rgba(255,255,255,0.35);border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;background:transparent;flex-shrink:0;margin-top:1px;}
 .tc-tick:hover{border-color:rgba(255,255,255,0.85);box-shadow:0 0 6px rgba(255,255,255,0.4);}
@@ -564,6 +622,12 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .repeat-box .repeat-extra select:focus{border-color:var(--accent);}
 .repeat-yearly-row{display:flex;gap:6px;}
 .repeat-yearly-row select{flex:1;}
+.repeat-custom-line{display:flex;gap:6px;align-items:center;}
+.repeat-custom-line input[type="number"]{width:72px;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:14px;color:var(--text);outline:none;}
+.repeat-custom-line input[type="number"]:focus{border-color:var(--accent);}
+.repeat-custom-line select{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:14px;color:var(--text);outline:none;}
+.repeat-custom-line select:focus{border-color:var(--accent);}
+.repeat-extra-sub{padding-top:8px;border-top:1px dashed var(--border);display:flex;flex-direction:column;gap:5px;}
 .repeat-info{margin-top:8px;font-size:12px;color:var(--text3);font-style:italic;}
 
 .weekday-chips{display:flex;gap:6px;flex-wrap:wrap;}

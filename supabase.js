@@ -135,7 +135,9 @@ async function hydrate(){
   S.projects = (projects||[]).map(rowToProject);
   S.tasks = (tasks||[]).map(rowToTask);
   if(S.projects.length && !S.projects.find(p=>p.id===S.activeProject)){
-    S.activeProject = S.projects[0].id;
+    // Pick the project at the top of the user's saved ordering (not the raw DB order).
+    const ordered = (typeof sortedProjects === 'function') ? sortedProjects() : S.projects;
+    S.activeProject = (ordered[0] || S.projects[0]).id;
   }
 
   // seed snapshot for diff
@@ -841,6 +843,8 @@ async function boot(){
     await hydrate();
     console.log('[boot] hydrate done. projects:', S.projects.length, 'tasks:', S.tasks.length);
     render();
+    // Auto-prune tasks completed >3 years ago (and their attachments) to bound storage growth.
+    if(typeof purgeExpiredTasks === 'function') purgeExpiredTasks();
     if(S.activeProject) fetchMembers(S.activeProject);
     subscribeRealtime();
     // First-time users (pre-existing accounts from nurseryAI) may not have a

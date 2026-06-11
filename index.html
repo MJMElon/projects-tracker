@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Vibe Tracker · MJM</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="board.css?v=182">
+<link rel="stylesheet" href="board.css?v=192">
 <link rel="icon" type="image/svg+xml" href="icon.svg">
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="manifest" href="manifest.webmanifest">
@@ -54,6 +54,7 @@
       </svg>
       <span class="btn-label-lg">Members</span>
     </button>
+    <div class="seg-toggle" id="viewToggle" role="group" aria-label="View mode"></div>
     <button class="btn btn-ghost btn-sm" id="themeBtn" onclick="toggleTheme()" title="Toggle light/dark" aria-label="Toggle theme">
       <svg id="themeIconDark" class="hdr-icon theme-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21.64 13a1 1 0 0 0-1.05-.14 8.05 8.05 0 0 1-3.37.73 8.15 8.15 0 0 1-8.14-8.1 8.59 8.59 0 0 1 .25-2A1 1 0 0 0 8 2.36a10.14 10.14 0 1 0 14 11.69 1 1 0 0 0-.36-1.05z"/></svg>
       <svg id="themeIconLight" class="hdr-icon theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" style="display:none"><circle cx="12" cy="12" r="4" fill="currentColor"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
@@ -71,13 +72,8 @@
   </aside>
   <div class="board-wrap">
     <div class="dash" id="dashStats"></div>
-    <div class="tl-section">
-      <button class="tl-toggle" id="tlToggle" onclick="toggleTimeline()">
-        <span class="tl-caret">▸</span><span>Project Timeline</span>
-      </button>
-      <div class="tl-panel" id="tlPanel"></div>
-    </div>
     <div class="board" id="board"></div>
+    <div class="task-list" id="taskList" style="display:none"></div>
   </div>
 </div>
 
@@ -126,6 +122,7 @@
           <option value="weekly">Weekly</option>
           <option value="monthly">Monthly</option>
           <option value="yearly">Yearly</option>
+          <option value="custom">Custom…</option>
         </select>
         <div id="fRepeatWeekdaysRow" class="repeat-extra" style="display:none">
           <div class="repeat-extra-label">On this day</div>
@@ -148,6 +145,38 @@
           <div class="repeat-yearly-row">
             <select id="fRepeatYearMonth"></select>
             <select id="fRepeatYearDay"></select>
+          </div>
+        </div>
+        <div id="fRepeatCustomRow" class="repeat-extra" style="display:none">
+          <div class="repeat-extra-label">Every</div>
+          <div class="repeat-custom-line">
+            <input type="number" id="fRepeatInterval" min="1" max="365" value="1" />
+            <select id="fRepeatUnit" onchange="onRepeatUnitChange()">
+              <option value="days">days</option>
+              <option value="weeks">weeks</option>
+              <option value="months" selected>months</option>
+              <option value="years">years</option>
+            </select>
+          </div>
+          <div id="fRepeatCustomMonthRow" class="repeat-extra-sub" style="display:none">
+            <div class="repeat-extra-label">Month</div>
+            <select id="fRepeatCustomYearMonth"></select>
+          </div>
+          <div id="fRepeatCustomDayRow" class="repeat-extra-sub">
+            <div class="repeat-extra-label">On day of month</div>
+            <select id="fRepeatCustomMonthDay"></select>
+          </div>
+          <div id="fRepeatCustomWeekdayRow" class="repeat-extra-sub" style="display:none">
+            <div class="repeat-extra-label">On weekday</div>
+            <div class="weekday-chips">
+              <label><input type="radio" name="fRepeatCustomWeekday" data-d="0"/><span>S</span></label>
+              <label><input type="radio" name="fRepeatCustomWeekday" data-d="1"/><span>M</span></label>
+              <label><input type="radio" name="fRepeatCustomWeekday" data-d="2"/><span>T</span></label>
+              <label><input type="radio" name="fRepeatCustomWeekday" data-d="3"/><span>W</span></label>
+              <label><input type="radio" name="fRepeatCustomWeekday" data-d="4"/><span>T</span></label>
+              <label><input type="radio" name="fRepeatCustomWeekday" data-d="5"/><span>F</span></label>
+              <label><input type="radio" name="fRepeatCustomWeekday" data-d="6"/><span>S</span></label>
+            </div>
           </div>
         </div>
       </div>
@@ -397,7 +426,7 @@
 <!-- hidden file input -->
 <input type="file" id="ssInput" accept="image/*" style="display:none" multiple />
 
-<script src="board.js?v=182"></script>
-<script src="supabase.js?v=182"></script>
+<script src="board.js?v=192"></script>
+<script src="supabase.js?v=192"></script>
 </body>
 </html>
