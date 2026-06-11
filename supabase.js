@@ -86,6 +86,44 @@ function isUuid(s){ return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-
 // ═══════════════════════════════════════════════
 // Raw-fetch an RPC endpoint with the current access token — bypasses
 // supabase-js internals (which have been hanging for this user).
+// ═══════════════════════════════════════════════
+// LOCAL STATE CACHE — instant repaint on reload while we re-fetch in the background.
+// Keyed by user id so multiple sign-ins on the same device don't see each other's data.
+// ═══════════════════════════════════════════════
+const STATE_CACHE_VERSION = 2;
+function _stateCacheKey(uid){ return 'pt_state_' + uid; }
+function saveStateCache(){
+  if(!_user?.id) return;
+  try {
+    const payload = JSON.stringify({
+      v: STATE_CACHE_VERSION,
+      ts: Date.now(),
+      projects: S.projects,
+      tasks: S.tasks,
+      activeProject: S.activeProject
+    });
+    localStorage.setItem(_stateCacheKey(_user.id), payload);
+  } catch(e){ /* quota / private mode — fail silently, app still works */ }
+}
+function loadStateCache(userId){
+  if(!userId) return false;
+  try {
+    const raw = localStorage.getItem(_stateCacheKey(userId));
+    if(!raw) return false;
+    const p = JSON.parse(raw);
+    if(!p || p.v !== STATE_CACHE_VERSION) return false;
+    S.projects = Array.isArray(p.projects) ? p.projects : [];
+    S.tasks = Array.isArray(p.tasks) ? p.tasks : [];
+    if(p.activeProject) S.activeProject = p.activeProject;
+    // Seed snapshot so the dirty-tracking guard in applyTaskChange has a baseline
+    // and doesn't treat cached state as "unsynced" forever.
+    _snap = { projects: {}, tasks: {} };
+    S.projects.forEach(pr => { _snap.projects[pr.id] = JSON.stringify(projectToRow(pr, userId)); });
+    S.tasks.forEach(t => { _snap.tasks[t.id] = JSON.stringify(taskToRow(t, userId)); });
+    return true;
+  } catch(e){ return false; }
+}
+
 async function rpcFetch(fnName, args = {}){
   // Use a fresh access token — long-lived tabs would otherwise hit JWT-expired errors here.
   const stored = await ensureFreshSession();
@@ -212,6 +250,8 @@ async function syncNow(){
     }
   } finally {
     _syncing = false;
+    // Persist the fresh state to the local cache so the next reload paints instantly.
+    saveStateCache();
     if(_pendingSync){ _pendingSync = false; syncNow(); }
   }
 }
@@ -310,6 +350,9 @@ async function doSignUp(){
   }
 }
 async function doSignOut(){
+  // Wipe the cached state for this user so a different account on the same browser
+  // doesn't briefly see the previous user's projects/tasks on next sign-in.
+  try { if(_user?.id) localStorage.removeItem(_stateCacheKey(_user.id)); } catch(e){}
   try { await sb.auth.signOut(); } catch(e){ console.warn('signOut error (proceeding anyway)', e); }
   _user = null;
   S.projects = []; S.tasks = []; S.activeProject = null;
@@ -661,6 +704,17 @@ function applyTaskChange(p){
     S.tasks = S.tasks.filter(t=>t.id!==id);
     delete _snap.tasks[id];
   } else {
+    const id = p.new.id;
+    // If the local task has unsynced changes (local row !== last-known snapshot), DON'T overwrite
+    // with the realtime payload — that's the lost-update bug where assigning a user briefly,
+    // then a stale echo arrives and wipes it back to Unassigned. The next syncNow will push our
+    // pending changes; the resulting echo will match the new snapshot and apply cleanly.
+    const local = S.tasks.find(t => t.id === id);
+    if(local){
+      const snap = _snap.tasks[id];
+      const currentRow = JSON.stringify(taskToRow(local, _user?.id));
+      if(snap !== undefined && currentRow !== snap) return; // pending local edits — skip echo
+    }
     const t = rowToTask(p.new);
     const i = S.tasks.findIndex(x=>x.id===t.id);
     if(i>=0) S.tasks[i] = t; else S.tasks.push(t);
@@ -675,6 +729,13 @@ function applyProjectChange(p){
     delete _snap.projects[id];
     if(S.activeProject===id) S.activeProject = S.projects[0]?.id || null;
   } else {
+    const id = p.new.id;
+    const local = S.projects.find(x => x.id === id);
+    if(local){
+      const snap = _snap.projects[id];
+      const currentRow = JSON.stringify(projectToRow(local, _user?.id));
+      if(snap !== undefined && currentRow !== snap) return; // pending local edits — skip echo
+    }
     const pr = rowToProject(p.new);
     const i = S.projects.findIndex(x=>x.id===pr.id);
     if(i>=0) S.projects[i] = pr; else S.projects.push(pr);
@@ -826,6 +887,12 @@ async function boot(){
       return;
     }
     hideAuth();
+    // Stale-while-revalidate: paint from cache immediately so the user sees their projects/tasks
+    // within ~50ms instead of waiting for the round-trip to Supabase. hydrate() then refreshes.
+    if(loadStateCache(_user.id)){
+      console.log('[boot] cached state loaded → render immediately');
+      render();
+    }
     // Tell supabase-js about our session so its SDK calls (storage, realtime)
     // include the JWT. Raced with a 4s timeout in case it hangs.
     try {
@@ -843,6 +910,7 @@ async function boot(){
     await hydrate();
     console.log('[boot] hydrate done. projects:', S.projects.length, 'tasks:', S.tasks.length);
     render();
+    saveStateCache(); // persist the fresh state for next reload
     // Auto-prune tasks completed >3 years ago (and their attachments) to bound storage growth.
     if(typeof purgeExpiredTasks === 'function') purgeExpiredTasks();
     if(S.activeProject) fetchMembers(S.activeProject);
