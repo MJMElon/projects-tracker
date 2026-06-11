@@ -890,6 +890,12 @@ async function boot(){
     // Stale-while-revalidate: paint from cache immediately so the user sees their projects/tasks
     // within ~50ms instead of waiting for the round-trip to Supabase. hydrate() then refreshes.
     if(loadStateCache(_user.id)){
+      // Always default to the top of the user's saved arrangement on reload, regardless of which
+      // project was active last session. The cache restores data; arrangement-top wins on selection.
+      try {
+        const ordered = (typeof sortedProjects === 'function') ? sortedProjects() : S.projects;
+        if(ordered && ordered.length) S.activeProject = ordered[0].id;
+      } catch(e){}
       console.log('[boot] cached state loaded → render immediately');
       render();
     }
@@ -909,6 +915,11 @@ async function boot(){
     console.log('[boot] hydrating...');
     await hydrate();
     console.log('[boot] hydrate done. projects:', S.projects.length, 'tasks:', S.tasks.length);
+    // After fresh data lands, re-default to the top of the (possibly reordered) arrangement.
+    try {
+      const ordered = (typeof sortedProjects === 'function') ? sortedProjects() : S.projects;
+      if(ordered && ordered.length) S.activeProject = ordered[0].id;
+    } catch(e){}
     render();
     saveStateCache(); // persist the fresh state for next reload
     // Auto-prune tasks completed >3 years ago (and their attachments) to bound storage growth.
