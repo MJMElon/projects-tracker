@@ -439,7 +439,7 @@ function renderBoard(){
 
   let html=proj.phases.map((ph,i)=>{
     const tasks=getColTasks(proj.id,ph);
-    const doneN=tasks.filter(t=>t.done).length;
+    const activeN=tasks.filter(t=>!t.done).length;
     const cc=colColor(i);
     const showOld = isOldDoneShown(proj.id, ph);
     // Build unified card list: main tasks + deployed subtasks, sorted by order
@@ -477,7 +477,7 @@ function renderBoard(){
       <div class="col-head">
         <div class="col-dot">${ETH_DIAMOND_SVG}</div>
         <div class="col-title">${esc(ph)}</div>
-        <div class="col-count">${doneN}/${tasks.length}</div>
+        <div class="col-count" title="active / total">${activeN}/${tasks.length}</div>
         <button class="col-menu-btn" onclick="openColCtx(event,'${esc(ph)}')">⋯</button>
       </div>
       <div class="col-body" id="col-${esc(ph)}">
