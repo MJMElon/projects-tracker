@@ -47,6 +47,24 @@ body{
 /* Prevent iOS auto-zoom on any form input (requires font-size >= 16px). */
 input, select, textarea, button { font-size: 16px; }
 
+/* iOS Safari: tapping an input with computed font-size < 16px auto-zooms the viewport
+   and the zoom often PERSISTS after the modal/drawer closes. Force every input/select/
+   textarea on touch-capable devices to 16px to kill that trigger entirely. Also disable
+   double-tap-zoom on tappable cards/rows so opening the drawer can't itself zoom. */
+@media (pointer: coarse), (hover: none) {
+  input, select, textarea,
+  .field input, .field select, .field textarea,
+  .sub-desc-input, .sub-date-field input, .sub-phase-select,
+  .st-add-input, .st-add-assign, .st-title-input,
+  .repeat-box .repeat-freq, .repeat-box .repeat-extra select,
+  .col-new-form input, .list-search, .list-status,
+  .drawer-title-input, #fRepeatInterval, #fRepeatUnit,
+  #fRepeatCustomMonthDay, #fRepeatCustomYearMonth { font-size: 16px !important; }
+  .tcard, .subtask-row, .list-row, .pchip, .col-head, .col-add-btn,
+  .tc-tick, .st-check, .drawer-check, .assign-wrap, .assign-pop-item,
+  .btn, .seg-btn { touch-action: manipulation; }
+}
+
 /* Make the native date-input calendar icon visible in dark mode. */
 :root[data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator,
 :root[data-theme="dark"] input[type="time"]::-webkit-calendar-picker-indicator,
