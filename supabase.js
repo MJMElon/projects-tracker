@@ -129,17 +129,24 @@ async function rpcFetch(fnName, args = {}){
   // Use a fresh access token — long-lived tabs would otherwise hit JWT-expired errors here.
   const stored = await ensureFreshSession();
   const token = stored?.access_token;
-  const res = await fetch(SUPABASE_URL + '/rest/v1/rpc/' + fnName, {
-    method: 'POST',
-    headers: {
-      'apikey': SUPABASE_ANON_KEY,
-      'Authorization': 'Bearer ' + token,
-      'Content-Type': 'application/json',
-      'Content-Profile': 'project_tracker',
-      'Accept-Profile': 'project_tracker'
-    },
-    body: JSON.stringify(args)
-  });
+  let res;
+  try {
+    res = await fetch(SUPABASE_URL + '/rest/v1/rpc/' + fnName, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + token,
+        'Content-Type': 'application/json',
+        'Content-Profile': 'project_tracker',
+        'Accept-Profile': 'project_tracker'
+      },
+      body: JSON.stringify(args)
+    });
+  } catch(e){
+    // Network failure (offline, DNS, CORS pre-fetch fail). Surface as a graceful error
+    // marked `offline:true` so callers can skip auth-reset and keep cached state.
+    return { data: null, error: { message: 'offline', offline: true, status: 0 } };
+  }
   const body = await res.json().catch(() => null);
   if(!res.ok) return { data: null, error: { message: body?.message || ('HTTP ' + res.status), status: res.status } };
   return { data: body, error: null };
@@ -150,6 +157,8 @@ async function hydrate(){
   const { data: projects, error: pe } = await rpcFetch('get_my_projects');
   console.log('[hydrate] projects returned. count:', projects?.length, 'error:', pe?.message);
   if(pe){
+    // Offline / network error → keep cached state, no alert, no auth reset.
+    if(pe.offline){ console.warn('[hydrate] offline — keeping cached state'); return; }
     // Stale session (e.g., signed out on another device) — wipe local state and sign in fresh.
     if(/jwt|token|expired|invalid|unauthor/i.test(pe.message || '')){
       console.warn('[hydrate] session invalid, clearing and re-auth');
@@ -163,6 +172,7 @@ async function hydrate(){
   const { data: tasks, error: te } = await rpcFetch('get_my_tasks');
   console.log('[hydrate] tasks returned. count:', tasks?.length, 'error:', te?.message);
   if(te){
+    if(te.offline){ console.warn('[hydrate] offline mid-fetch — keeping cached state'); return; }
     if(/jwt|token|expired|invalid|unauthor/i.test(te.message || '')){
       hardReset();
       return;
@@ -977,6 +987,15 @@ async function boot(){
     console.log('[boot] done');
   } catch(e){
     console.error('[boot] failed', e);
+    // Network failure (offline)? Don't sign the user out — keep whatever the cache rendered
+    // and let resyncOnFocus / 'online' listener catch up when the connection returns.
+    const isNetErr = e && (e.name === 'TypeError' || /failed to fetch|networkerror|load failed/i.test(e.message || ''));
+    if(isNetErr && _user){
+      console.warn('[boot] offline at boot — keeping cached UI');
+      if(typeof hideAuth === 'function') hideAuth();
+      try { if(loadStateCache && loadStateCache(_user.id)) render(); } catch(_){}
+      return;
+    }
     alert('Failed to start: '+(e.message||e));
     showAuth();
   }
