@@ -16,6 +16,7 @@ let _snap = { projects: {}, tasks: {} };      // id -> JSON string (for diff)
 let _syncTimer = null;
 let _syncing = false;
 let _pendingSync = false;
+let _syncPending = false; // true while the debounced timer is set OR we have queued work
 
 // ── task shape mapping (client ↔ db) ──────────────────────────
 // Client task: {id, projectId, title, desc, phase, urgency, assignee, due, startDate,
@@ -257,12 +258,13 @@ async function syncNow(){
 }
 function queueSync(){
   clearTimeout(_syncTimer);
-  _syncTimer = setTimeout(syncNow, 350);
+  _syncPending = true;
+  _syncTimer = setTimeout(() => { _syncTimer = null; _syncPending = false; syncNow(); }, 350);
 }
 // Bypass the debounce — run the sync right now. Use for user actions where
 // pending state must hit the DB before the next page load (e.g. uploads).
 async function flushSync(){
-  clearTimeout(_syncTimer);
+  clearTimeout(_syncTimer); _syncTimer = null; _syncPending = false;
   await syncNow();
 }
 
@@ -684,8 +686,10 @@ async function doSelfLeave(){
 // REALTIME (optional multi-user updates)
 // ═══════════════════════════════════════════════
 let _realtimeCh = null;
+let _realtimeReconnectTimer = null;
 function subscribeRealtime(){
-  if(_realtimeCh) { try{ sb.removeChannel(_realtimeCh); }catch(e){} }
+  if(_realtimeCh) { try{ sb.removeChannel(_realtimeCh); }catch(e){} _realtimeCh = null; }
+  if(_realtimeReconnectTimer){ clearTimeout(_realtimeReconnectTimer); _realtimeReconnectTimer = null; }
   _realtimeCh = sb.channel('pt-changes')
     .on('postgres_changes', { event:'*', schema:'project_tracker', table:'tasks' }, payload => {
       // Ignore our own writes (optimistic)
@@ -696,7 +700,39 @@ function subscribeRealtime(){
       if(_syncing) return;
       applyProjectChange(payload);
     })
-    .subscribe();
+    .subscribe((status, err) => {
+      console.log('[realtime] status:', status, err || '');
+      // Channel died (websocket dropped, server timed out, network blip) → reconnect after 2s.
+      if(status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED'){
+        if(_realtimeReconnectTimer) return;
+        _realtimeReconnectTimer = setTimeout(() => {
+          _realtimeReconnectTimer = null;
+          if(_user) subscribeRealtime();
+        }, 2000);
+      }
+    });
+}
+
+// Backgrounded tabs (mobile, laptop sleep) lose websocket events. When the tab regains
+// focus, pull fresh state and re-subscribe so any missed changes appear without a manual reload.
+let _lastResyncTs = 0;
+async function resyncOnFocus(){
+  if(!_user) return;
+  if(Date.now() - _lastResyncTs < 5000) return; // throttle to one resync per 5s
+  _lastResyncTs = Date.now();
+  try {
+    await hydrate();
+    render();
+    saveStateCache();
+  } catch(e){ console.warn('[resync] hydrate failed', e); }
+  subscribeRealtime();
+}
+if(typeof document !== 'undefined'){
+  document.addEventListener('visibilitychange', () => {
+    if(document.visibilityState === 'visible') resyncOnFocus();
+  });
+  window.addEventListener('focus', () => resyncOnFocus());
+  window.addEventListener('online', () => resyncOnFocus());
 }
 function applyTaskChange(p){
   if(p.eventType === 'DELETE'){
@@ -705,15 +741,15 @@ function applyTaskChange(p){
     delete _snap.tasks[id];
   } else {
     const id = p.new.id;
-    // If the local task has unsynced changes (local row !== last-known snapshot), DON'T overwrite
-    // with the realtime payload — that's the lost-update bug where assigning a user briefly,
-    // then a stale echo arrives and wipes it back to Unassigned. The next syncNow will push our
-    // pending changes; the resulting echo will match the new snapshot and apply cleanly.
-    const local = S.tasks.find(t => t.id === id);
-    if(local){
-      const snap = _snap.tasks[id];
-      const currentRow = JSON.stringify(taskToRow(local, _user?.id));
-      if(snap !== undefined && currentRow !== snap) return; // pending local edits — skip echo
+    // Only skip the echo when we have a pending/in-flight sync AND this specific task
+    // has unsynced local edits. Otherwise apply — other people's changes need to land.
+    if(_syncing || _syncPending){
+      const local = S.tasks.find(t => t.id === id);
+      if(local){
+        const snap = _snap.tasks[id];
+        const currentRow = JSON.stringify(taskToRow(local, _user?.id));
+        if(snap !== undefined && currentRow !== snap) return; // local has unsynced edits → skip echo
+      }
     }
     const t = rowToTask(p.new);
     const i = S.tasks.findIndex(x=>x.id===t.id);
@@ -730,11 +766,13 @@ function applyProjectChange(p){
     if(S.activeProject===id) S.activeProject = S.projects[0]?.id || null;
   } else {
     const id = p.new.id;
-    const local = S.projects.find(x => x.id === id);
-    if(local){
-      const snap = _snap.projects[id];
-      const currentRow = JSON.stringify(projectToRow(local, _user?.id));
-      if(snap !== undefined && currentRow !== snap) return; // pending local edits — skip echo
+    if(_syncing || _syncPending){
+      const local = S.projects.find(x => x.id === id);
+      if(local){
+        const snap = _snap.projects[id];
+        const currentRow = JSON.stringify(projectToRow(local, _user?.id));
+        if(snap !== undefined && currentRow !== snap) return;
+      }
     }
     const pr = rowToProject(p.new);
     const i = S.projects.findIndex(x=>x.id===pr.id);
