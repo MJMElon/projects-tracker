@@ -206,19 +206,19 @@ async function syncNow(){
     const projDeletes = Object.keys(_snap.projects).filter(id => !projIds.has(id));
     if(projInserts.length){
       const { error } = await sb.from('projects').insert(projInserts);
-      if(error){ console.error('project insert', error); alert('Project save failed: '+error.message); }
+      if(error){ console.warn('project insert (will retry)', error); if(navigator.onLine !== false) alert('Project save failed: '+error.message); }
       else projInserts.forEach(r => { _snap.projects[r.id] = JSON.stringify(r); });
     }
     for(const row of projUpdates){
       const { id, ...fields } = row;
       const { error } = await sb.from('projects').update(fields).eq('id', id);
-      if(error){ console.error('project update', error); alert('Project save failed: '+error.message); }
+      if(error){ console.warn('project update (will retry)', error); if(navigator.onLine !== false) alert('Project save failed: '+error.message); }
       else _snap.projects[id] = JSON.stringify(row);
     }
     if(projDeletes.length){
       const { error } = await sb.from('projects').delete().in('id', projDeletes);
-      if(error){ console.error('project delete', error); alert('Project delete failed: '+error.message); }
-      projDeletes.forEach(id => delete _snap.projects[id]);
+      if(error){ console.warn('project delete (will retry)', error); if(navigator.onLine !== false) alert('Project delete failed: '+error.message); }
+      else projDeletes.forEach(id => delete _snap.projects[id]);
     }
 
     // TASKS — same split: inserts vs updates
@@ -235,13 +235,13 @@ async function syncNow(){
     const taskDeletes = Object.keys(_snap.tasks).filter(id => !taskIds.has(id));
     if(taskInserts.length){
       const { error } = await sb.from('tasks').insert(taskInserts);
-      if(error){ console.error('task insert', error); alert('Save failed: '+error.message); }
+      if(error){ console.warn('task insert (will retry)', error); if(navigator.onLine !== false) alert('Save failed: '+error.message); }
       else taskInserts.forEach(r => { _snap.tasks[r.id] = JSON.stringify(r); });
     }
     for(const row of taskUpdates){
       const { id, ...fields } = row;
       const { error } = await sb.from('tasks').update(fields).eq('id', id);
-      if(error){ console.error('task update', error); alert('Save failed: '+error.message); }
+      if(error){ console.warn('task update (will retry)', error); if(navigator.onLine !== false) alert('Save failed: '+error.message); }
       else _snap.tasks[id] = JSON.stringify(row);
     }
     if(taskDeletes.length){
@@ -732,7 +732,11 @@ if(typeof document !== 'undefined'){
     if(document.visibilityState === 'visible') resyncOnFocus();
   });
   window.addEventListener('focus', () => resyncOnFocus());
-  window.addEventListener('online', () => resyncOnFocus());
+  window.addEventListener('online', () => {
+    console.log('[net] back online — flushing pending sync + resyncing');
+    resyncOnFocus();
+    if(_user) queueSync();
+  });
 }
 function applyTaskChange(p){
   if(p.eventType === 'DELETE'){
