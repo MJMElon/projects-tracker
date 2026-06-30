@@ -1104,6 +1104,22 @@ sb.auth.onAuthStateChange(async (event, session) => {
     if(S.activeProject) fetchMembers(S.activeProject);
     subscribeRealtime();
   } else if(event === 'SIGNED_OUT'){
+    // supabase-js can fire SIGNED_OUT while OFFLINE if it fails to validate the cached session
+    // against the server. Ignore those — our stored token is still good and resyncOnFocus +
+    // 'online' listener will reconcile when network returns.
+    if(typeof navigator !== 'undefined' && navigator.onLine === false){
+      console.warn('[auth] SIGNED_OUT received while offline — ignoring');
+      return;
+    }
+    // Also guard: if the auth-token row is still in localStorage, treat the event as spurious
+    // (some supabase-js versions emit it during refresh-token retries).
+    try {
+      const stored = (typeof readStoredSession === 'function') ? readStoredSession() : null;
+      if(stored?.access_token){
+        console.warn('[auth] SIGNED_OUT but stored token still present — keeping session');
+        return;
+      }
+    } catch(_){}
     _lastHydratedUid = null;
     showAuth();
   }
