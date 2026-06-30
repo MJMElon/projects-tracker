@@ -894,6 +894,11 @@ async function boot(){
             JSON.stringify({ ...refreshed, currentSession: refreshed, expires_at: refreshed.expires_at })
           );
         } catch(e){ console.warn('[boot] could not persist refreshed token', e); }
+      } else if(typeof navigator !== 'undefined' && navigator.onLine === false){
+        // Refresh failed because we're offline — keep the (technically expired) stored session
+        // so the UI stays signed in. The 'online' listener will retry the refresh once network
+        // returns; until then the cached state is what the user sees.
+        console.warn('[boot] refresh failed but offline — keeping stored session');
       } else {
         console.warn('[boot] refresh failed → forcing sign-in');
         stored = null;
