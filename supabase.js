@@ -4,11 +4,27 @@
 const SUPABASE_URL = 'https://kibqjztozokohqmhqqqf.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtpYnFqenRvem9rb2hxbWhxcXFmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyMzQzNjIsImV4cCI6MjA4OTgxMDM2Mn0.J7qJUZhWXYf5b9oey4wXJkjdi66jomEMw_NeV9NWF7M';
 
+// VibeTracker uses its OWN localStorage key so it doesn't share auth state with other apps
+// on the same Supabase project (e.g. nurseryAI). Without this, signing into one app would
+// silently sign you into all of them (same anon key + default storage key).
+const AUTH_STORAGE_KEY = 'vibetracker-auth-token';            // dedicated to VibeTracker
+const LEGACY_AUTH_KEY  = 'sb-kibqjztozokohqmhqqqf-auth-token'; // shared with other apps — read-only
+
+// One-time migration: on first load with the new key, copy the existing shared session over
+// so users aren't kicked out by this change. AFTER migration, the two keys drift apart —
+// signing out here only clears our key; signing in elsewhere doesn't touch ours.
+try {
+  if(!localStorage.getItem(AUTH_STORAGE_KEY)){
+    const legacy = localStorage.getItem(LEGACY_AUTH_KEY);
+    if(legacy) localStorage.setItem(AUTH_STORAGE_KEY, legacy);
+  }
+} catch(e){}
+
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   db: { schema: 'project_tracker' },
   // autoRefreshToken disabled — supabase-js can hang on the refresh call in
   // some environments; we refresh manually below with a timeout.
-  auth: { persistSession: true, autoRefreshToken: false }
+  auth: { persistSession: true, autoRefreshToken: false, storageKey: AUTH_STORAGE_KEY }
 });
 
 let _user = null;
@@ -424,7 +440,10 @@ async function doSignOut(){
   // Wipe the cached state for this user so a different account on the same browser
   // doesn't briefly see the previous user's projects/tasks on next sign-in.
   try { if(_user?.id) localStorage.removeItem(_stateCacheKey(_user.id)); } catch(e){}
-  try { await sb.auth.signOut(); } catch(e){ console.warn('signOut error (proceeding anyway)', e); }
+  // LOCAL-ONLY sign-out: just delete our auth token. We deliberately DON'T call
+  // sb.auth.signOut() because that revokes the refresh_token server-side, which would
+  // sign the user out of the OTHER apps (e.g. nurseryAI) that share this Supabase project.
+  try { localStorage.removeItem(AUTH_STORAGE_KEY); } catch(e){}
   _user = null;
   S.projects = []; S.tasks = []; S.activeProject = null;
   _snap = { projects: {}, tasks: {} };
@@ -863,7 +882,7 @@ function applyProjectChange(p){
 // Read session directly from localStorage — bypasses any locks in supabase-js
 function readStoredSession(){
   try {
-    const raw = localStorage.getItem('sb-kibqjztozokohqmhqqqf-auth-token');
+    const raw = localStorage.getItem(AUTH_STORAGE_KEY);
     if(!raw) return null;
     const parsed = JSON.parse(raw);
     // Storage format varies across supabase-js versions; try both shapes.
@@ -884,7 +903,7 @@ async function ensureFreshSession(){
   if(!refreshed) return stored;
   try {
     localStorage.setItem(
-      'sb-kibqjztozokohqmhqqqf-auth-token',
+      AUTH_STORAGE_KEY,
       JSON.stringify({ ...refreshed, currentSession: refreshed, expires_at: refreshed.expires_at })
     );
   } catch(e){}
@@ -951,7 +970,7 @@ async function boot(){
         stored = refreshed;
         try {
           localStorage.setItem(
-            'sb-kibqjztozokohqmhqqqf-auth-token',
+            AUTH_STORAGE_KEY,
             JSON.stringify({ ...refreshed, currentSession: refreshed, expires_at: refreshed.expires_at })
           );
         } catch(e){ console.warn('[boot] could not persist refreshed token', e); }
@@ -1120,7 +1139,8 @@ async function completePasswordReset(){
 // and reload to the sign-in form so a returning user can log in normally.
 function escapeInviteSetup(){
   try {
-    Object.keys(localStorage).filter(k => k.startsWith('sb-')).forEach(k => localStorage.removeItem(k));
+    // Only wipe VibeTracker's own key — don't touch other apps' sessions on this device.
+    localStorage.removeItem(AUTH_STORAGE_KEY);
   } catch(e){}
   // Strip any leftover invite-flow markers from the URL
   try { history.replaceState(null, '', window.location.pathname); } catch(e){}
