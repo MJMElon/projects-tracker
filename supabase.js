@@ -91,7 +91,11 @@ function isUuid(s){ return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-
 // LOCAL STATE CACHE — instant repaint on reload while we re-fetch in the background.
 // Keyed by user id so multiple sign-ins on the same device don't see each other's data.
 // ═══════════════════════════════════════════════
-const STATE_CACHE_VERSION = 2;
+// STATE_CACHE_VERSION bumped to 3: now persists the `_snap` diff-baseline alongside `S`.
+// This is critical for offline: without it, unsynced edits survived S but were treated as
+// "already synced" by the diff check on reload (because _snap was seeded from post-edit S),
+// which caused offline task creations/edits to silently vanish once the tab reopened.
+const STATE_CACHE_VERSION = 3;
 function _stateCacheKey(uid){ return 'pt_state_' + uid; }
 function saveStateCache(){
   if(!_user?.id) return;
@@ -101,7 +105,8 @@ function saveStateCache(){
       ts: Date.now(),
       projects: S.projects,
       tasks: S.tasks,
-      activeProject: S.activeProject
+      activeProject: S.activeProject,
+      snap: _snap
     });
     localStorage.setItem(_stateCacheKey(_user.id), payload);
   } catch(e){ /* quota / private mode — fail silently, app still works */ }
@@ -116,13 +121,40 @@ function loadStateCache(userId){
     S.projects = Array.isArray(p.projects) ? p.projects : [];
     S.tasks = Array.isArray(p.tasks) ? p.tasks : [];
     if(p.activeProject) S.activeProject = p.activeProject;
-    // Seed snapshot so the dirty-tracking guard in applyTaskChange has a baseline
-    // and doesn't treat cached state as "unsynced" forever.
-    _snap = { projects: {}, tasks: {} };
-    S.projects.forEach(pr => { _snap.projects[pr.id] = JSON.stringify(projectToRow(pr, userId)); });
-    S.tasks.forEach(t => { _snap.tasks[t.id] = JSON.stringify(taskToRow(t, userId)); });
+    // Restore the snapshot verbatim if it was persisted — this preserves any offline
+    // unsynced-diff state so the next syncNow correctly pushes those pending edits.
+    if(p.snap && typeof p.snap === 'object' && p.snap.projects && p.snap.tasks){
+      _snap = { projects: {...p.snap.projects}, tasks: {...p.snap.tasks} };
+    } else {
+      // Legacy cache (v2) — seed snapshot from S. Any pending edits are LOST here, but
+      // this branch only runs the first time after upgrading; going forward v3 preserves.
+      _snap = { projects: {}, tasks: {} };
+      S.projects.forEach(pr => { _snap.projects[pr.id] = JSON.stringify(projectToRow(pr, userId)); });
+      S.tasks.forEach(t => { _snap.tasks[t.id] = JSON.stringify(taskToRow(t, userId)); });
+    }
     return true;
   } catch(e){ return false; }
+}
+// True if any local project/task differs from its last-synced snapshot (i.e. we have
+// unsynced edits — usually because the user was offline when they made them).
+function hasPendingChanges(){
+  if(!_user?.id) return false;
+  for(const p of S.projects){
+    const row = JSON.stringify(projectToRow(p, _user.id));
+    if(_snap.projects[p.id] === undefined) return true;
+    if(_snap.projects[p.id] !== row) return true;
+  }
+  for(const t of S.tasks){
+    if(!t.projectId || !isUuid(t.projectId)) continue;
+    const row = JSON.stringify(taskToRow(t, _user.id));
+    if(_snap.tasks[t.id] === undefined) return true;
+    if(_snap.tasks[t.id] !== row) return true;
+  }
+  const projIds = new Set(S.projects.map(p => p.id));
+  const taskIds = new Set(S.tasks.map(t => t.id));
+  if(Object.keys(_snap.projects).some(id => !projIds.has(id))) return true;
+  if(Object.keys(_snap.tasks).some(id => !taskIds.has(id))) return true;
+  return false;
 }
 
 async function rpcFetch(fnName, args = {}){
@@ -157,15 +189,13 @@ async function hydrate(){
   const { data: projects, error: pe } = await rpcFetch('get_my_projects');
   console.log('[hydrate] projects returned. count:', projects?.length, 'error:', pe?.message);
   if(pe){
-    // Offline / network error → keep cached state, no alert, no auth reset.
     if(pe.offline){ console.warn('[hydrate] offline — keeping cached state'); return; }
-    // Stale session (e.g., signed out on another device) — wipe local state and sign in fresh.
     if(/jwt|token|expired|invalid|unauthor/i.test(pe.message || '')){
       console.warn('[hydrate] session invalid, clearing and re-auth');
       hardReset();
       return;
     }
-    alert('Failed to load projects: '+pe.message);
+    console.error('[hydrate] failed to load projects', pe);
     return;
   }
   console.log('[hydrate] fetching get_my_tasks');
@@ -177,7 +207,7 @@ async function hydrate(){
       hardReset();
       return;
     }
-    alert('Failed to load tasks: '+te.message);
+    console.error('[hydrate] failed to load tasks', te);
     return;
   }
 
@@ -198,12 +228,36 @@ async function hydrate(){
 // ═══════════════════════════════════════════════
 // PERSIST (diff & push)
 // ═══════════════════════════════════════════════
+// Safely await one supabase mutation. Returns {ok, error, offline}.
+// Guarantees no throw — callers never break the sync loop on a single failure.
+async function _tryOp(promise){
+  try {
+    const { error } = await promise;
+    if(!error) return { ok: true };
+    // 42P01/PGRST etc are real errors. Anything with "fetch" or network-related is offline-ish.
+    const msg = error.message || String(error);
+    const isNet = /failed to fetch|networkerror|load failed|network request failed|offline/i.test(msg);
+    return { ok: false, error, offline: isNet };
+  } catch(e){
+    const msg = e?.message || String(e);
+    const isNet = e?.name === 'TypeError' || /failed to fetch|networkerror|load failed|network request failed/i.test(msg);
+    return { ok: false, error: e, offline: isNet };
+  }
+}
+
 async function syncNow(){
   if(!_user) return;
   if(_syncing){ _pendingSync = true; return; }
+  // Skip entirely when offline — no point burning the call. queueSync will re-fire via the
+  // 'online' listener; the persisted _snap ensures the diff is still there.
+  if(typeof navigator !== 'undefined' && navigator.onLine === false){
+    console.log('[sync] offline — deferring until online');
+    saveStateCache();
+    return;
+  }
   _syncing = true;
   try {
-    // PROJECTS — split dirty rows into inserts (no snapshot) vs updates (diff exists)
+    // PROJECTS
     const projIds = new Set(S.projects.map(p=>p.id));
     const projInserts = [];
     const projUpdates = [];
@@ -214,24 +268,25 @@ async function syncNow(){
       else if(_snap.projects[p.id] !== key) projUpdates.push(row);
     });
     const projDeletes = Object.keys(_snap.projects).filter(id => !projIds.has(id));
+
     if(projInserts.length){
-      const { error } = await sb.from('projects').insert(projInserts);
-      if(error){ console.warn('project insert (will retry)', error); if(navigator.onLine !== false) alert('Project save failed: '+error.message); }
-      else projInserts.forEach(r => { _snap.projects[r.id] = JSON.stringify(r); });
+      const r = await _tryOp(sb.from('projects').insert(projInserts));
+      if(r.ok) projInserts.forEach(row => { _snap.projects[row.id] = JSON.stringify(row); });
+      else console.warn('[sync] project insert failed (will retry)', r.error);
     }
     for(const row of projUpdates){
       const { id, ...fields } = row;
-      const { error } = await sb.from('projects').update(fields).eq('id', id);
-      if(error){ console.warn('project update (will retry)', error); if(navigator.onLine !== false) alert('Project save failed: '+error.message); }
-      else _snap.projects[id] = JSON.stringify(row);
+      const r = await _tryOp(sb.from('projects').update(fields).eq('id', id));
+      if(r.ok) _snap.projects[id] = JSON.stringify(row);
+      else console.warn('[sync] project update failed (will retry)', id, r.error);
     }
     if(projDeletes.length){
-      const { error } = await sb.from('projects').delete().in('id', projDeletes);
-      if(error){ console.warn('project delete (will retry)', error); if(navigator.onLine !== false) alert('Project delete failed: '+error.message); }
-      else projDeletes.forEach(id => delete _snap.projects[id]);
+      const r = await _tryOp(sb.from('projects').delete().in('id', projDeletes));
+      if(r.ok) projDeletes.forEach(id => delete _snap.projects[id]);
+      else console.warn('[sync] project delete failed (will retry)', r.error);
     }
 
-    // TASKS — same split: inserts vs updates
+    // TASKS
     const taskIds = new Set(S.tasks.map(t=>t.id));
     const taskInserts = [];
     const taskUpdates = [];
@@ -243,30 +298,34 @@ async function syncNow(){
       else if(_snap.tasks[t.id] !== key) taskUpdates.push(row);
     });
     const taskDeletes = Object.keys(_snap.tasks).filter(id => !taskIds.has(id));
+
     if(taskInserts.length){
-      const { error } = await sb.from('tasks').insert(taskInserts);
-      if(error){ console.warn('task insert (will retry)', error); if(navigator.onLine !== false) alert('Save failed: '+error.message); }
-      else taskInserts.forEach(r => { _snap.tasks[r.id] = JSON.stringify(r); });
+      const r = await _tryOp(sb.from('tasks').insert(taskInserts));
+      if(r.ok) taskInserts.forEach(row => { _snap.tasks[row.id] = JSON.stringify(row); });
+      else console.warn('[sync] task insert failed (will retry)', r.error);
     }
+    // Do task updates one-by-one so a single per-task failure doesn't block the rest.
     for(const row of taskUpdates){
       const { id, ...fields } = row;
-      const { error } = await sb.from('tasks').update(fields).eq('id', id);
-      if(error){ console.warn('task update (will retry)', error); if(navigator.onLine !== false) alert('Save failed: '+error.message); }
-      else _snap.tasks[id] = JSON.stringify(row);
+      const r = await _tryOp(sb.from('tasks').update(fields).eq('id', id));
+      if(r.ok) _snap.tasks[id] = JSON.stringify(row);
+      else console.warn('[sync] task update failed (will retry)', id, r.error);
     }
     if(taskDeletes.length){
-      const { error } = await sb.from('tasks').delete().in('id', taskDeletes);
-      if(error) console.error('task delete', error);
-      taskDeletes.forEach(id => delete _snap.tasks[id]);
+      const r = await _tryOp(sb.from('tasks').delete().in('id', taskDeletes));
+      if(r.ok) taskDeletes.forEach(id => delete _snap.tasks[id]);
+      else console.warn('[sync] task delete failed (will retry)', r.error);
     }
   } finally {
     _syncing = false;
-    // Persist the fresh state to the local cache so the next reload paints instantly.
+    // Always persist — this saves both S and _snap so unsynced diffs survive reload.
     saveStateCache();
     if(_pendingSync){ _pendingSync = false; syncNow(); }
   }
 }
 function queueSync(){
+  // Persist immediately so a crash / tab close between now and the debounce fire won't lose data.
+  saveStateCache();
   clearTimeout(_syncTimer);
   _syncPending = true;
   _syncTimer = setTimeout(() => { _syncTimer = null; _syncPending = false; syncNow(); }, 350);
@@ -726,15 +785,17 @@ function subscribeRealtime(){
 // Backgrounded tabs (mobile, laptop sleep) lose websocket events. When the tab regains
 // focus, pull fresh state and re-subscribe so any missed changes appear without a manual reload.
 let _lastResyncTs = 0;
-async function resyncOnFocus(){
+async function resyncOnFocus(force){
   if(!_user) return;
-  if(Date.now() - _lastResyncTs < 5000) return; // throttle to one resync per 5s
+  if(!force && Date.now() - _lastResyncTs < 5000) return; // throttle to one resync per 5s
   _lastResyncTs = Date.now();
   try {
+    // Push local pending edits BEFORE hydrating, so hydrate doesn't clobber them.
+    if(hasPendingChanges()) await syncNow();
     await hydrate();
     render();
     saveStateCache();
-  } catch(e){ console.warn('[resync] hydrate failed', e); }
+  } catch(e){ console.warn('[resync] failed', e); }
   subscribeRealtime();
 }
 if(typeof document !== 'undefined'){
@@ -743,9 +804,9 @@ if(typeof document !== 'undefined'){
   });
   window.addEventListener('focus', () => resyncOnFocus());
   window.addEventListener('online', () => {
-    console.log('[net] back online — flushing pending sync + resyncing');
-    resyncOnFocus();
-    if(_user) queueSync();
+    console.log('[net] back online — pushing pending edits + resyncing');
+    // Force resync (bypass 5s throttle) and push queued changes.
+    resyncOnFocus(true);
   });
 }
 function applyTaskChange(p){
@@ -969,6 +1030,14 @@ async function boot(){
     // SIGNED_IN event (which fires concurrently) doesn't trigger a second
     // hydrate on top of ours.
     _lastHydratedUid = _user?.id;
+    // CRITICAL: if the cache had unsynced offline edits (pending diffs vs _snap), push them
+    // to the server FIRST — otherwise hydrate() would overwrite S with server data and the
+    // edits would be permanently lost. If offline, syncNow bails silently and the diffs
+    // stay in _snap for the 'online' listener to flush later.
+    if(hasPendingChanges()){
+      console.log('[boot] pending offline edits detected — flushing before hydrate');
+      await syncNow();
+    }
     console.log('[boot] hydrating...');
     await hydrate();
     console.log('[boot] hydrate done. projects:', S.projects.length, 'tasks:', S.tasks.length);
@@ -992,16 +1061,27 @@ async function boot(){
     console.log('[boot] done');
   } catch(e){
     console.error('[boot] failed', e);
-    // Network failure (offline)? Don't sign the user out — keep whatever the cache rendered
-    // and let resyncOnFocus / 'online' listener catch up when the connection returns.
-    const isNetErr = e && (e.name === 'TypeError' || /failed to fetch|networkerror|load failed/i.test(e.message || ''));
-    if(isNetErr && _user){
+    // Network / offline failure? Never sign the user out. Restore _user from localStorage
+    // if we hadn't set it yet, render cached state, and let the 'online' listener catch up.
+    const msg = String(e?.message || e || '');
+    const isNetErr = !navigator.onLine
+      || e?.name === 'TypeError'
+      || /failed to fetch|networkerror|load failed|network request failed|timeout|offline/i.test(msg);
+    if(isNetErr){
       console.warn('[boot] offline at boot — keeping cached UI');
-      if(typeof hideAuth === 'function') hideAuth();
-      try { if(loadStateCache && loadStateCache(_user.id)) render(); } catch(_){}
-      return;
+      if(!_user){
+        try {
+          const stored = readStoredSession();
+          if(stored?.user){ _user = stored.user; renderAuthBar(); }
+        } catch(_){}
+      }
+      if(_user){
+        if(typeof hideAuth === 'function') hideAuth();
+        try { if(loadStateCache(_user.id)) render(); } catch(_){}
+        return;
+      }
     }
-    alert('Failed to start: '+(e.message||e));
+    // Not offline AND no session → real problem. Show auth screen (no alert popup).
     showAuth();
   }
 }

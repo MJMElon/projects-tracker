@@ -1,37 +1,54 @@
-// VibeTracker service worker — app-shell caching for offline use.
+// VibeTracker service worker — offline app-shell + auto-update.
 //
 // Strategy:
-//   - Same-origin static assets (HTML/CSS/JS/icon/manifest/fonts): cache-first, refresh in background.
-//   - Supabase API + Storage + Realtime: network-only. App's localStorage cache provides offline data;
-//     queued mutations retry when the 'online' event fires (handled in supabase.js).
-//   - CDN scripts/fonts (jsdelivr, Google Fonts): cache-first with network update.
+//   - Entry point (index.html, /): NETWORK-FIRST so the latest ?v=N script/style URLs load
+//     when online. Falls back to cache when offline.
+//   - Versioned assets (board.js?v=N, board.css?v=N, supabase.js?v=N): cache-first with
+//     background refresh. Pre-cached during install so offline reloads work immediately.
+//   - Static assets (icon.svg, manifest): cache-first.
+//   - CDN scripts / fonts: cache-first with background refresh.
+//   - Supabase API + Realtime + Storage: network-only (app handles offline via localStorage).
 //
-// Bump CACHE_VERSION when you ship changes that the SW must invalidate.
+// IMPORTANT: bump BOTH APP_VERSION (matches ?v= in index.html) AND CACHE_VERSION on every deploy.
 
-const CACHE_VERSION = 'vt-v3';
+const APP_VERSION = 211;
+const CACHE_VERSION = 'vt-v' + APP_VERSION;
+
 const APP_SHELL = [
   './',
   './index.html',
-  './board.css',
-  './board.js',
-  './supabase.js',
+  './board.css?v=' + APP_VERSION,
+  './board.js?v=' + APP_VERSION,
+  './supabase.js?v=' + APP_VERSION,
   './icon.svg',
   './manifest.webmanifest',
+  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
 ];
 
 self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_VERSION).then(cache => cache.addAll(APP_SHELL))
-      .then(() => self.skipWaiting())
-  );
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE_VERSION);
+    // Use allSettled so one failed pre-cache doesn't abort install.
+    await Promise.allSettled(APP_SHELL.map(async url => {
+      try {
+        const res = await fetch(url, { cache: 'reload' });
+        if(res && (res.ok || res.type === 'opaque')) await cache.put(url, res);
+      } catch(e){ /* skip — will be fetched on demand */ }
+    }));
+    self.skipWaiting();
+  })());
 });
 
 self.addEventListener('activate', event => {
-  event.waitUntil(
-    caches.keys().then(keys => Promise.all(
-      keys.filter(k => k !== CACHE_VERSION).map(k => caches.delete(k))
-    )).then(() => self.clients.claim())
-  );
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.filter(k => k !== CACHE_VERSION).map(k => caches.delete(k)));
+    await self.clients.claim();
+  })());
+});
+
+self.addEventListener('message', event => {
+  if(event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
 function isSupabaseRequest(url){
@@ -42,33 +59,49 @@ function isSupabaseRequest(url){
       || url.includes('/storage/v1/');
 }
 
-function isAppShellOrigin(url){
-  // Same-origin requests we want to cache (the GitHub Pages host).
-  try {
-    const u = new URL(url);
-    return u.origin === self.location.origin;
-  } catch(e){ return false; }
+function isEntryPoint(req){
+  if(req.mode === 'navigate') return true;
+  const u = new URL(req.url);
+  if(u.origin !== self.location.origin) return false;
+  const p = u.pathname;
+  return p === '/' || p.endsWith('/') || p.endsWith('/index.html');
 }
 
 self.addEventListener('fetch', event => {
   const req = event.request;
-  if(req.method !== 'GET') return; // never cache writes
+  if(req.method !== 'GET') return;
   const url = req.url;
 
-  // Supabase: always network. If offline, the app handles the failure via its localStorage cache.
+  // Supabase API + realtime + storage: always network. Offline is handled by the app.
   if(isSupabaseRequest(url)) return;
 
-  // App-shell / CDN: cache-first, with background refresh (stale-while-revalidate).
+  // Entry point: NETWORK-FIRST. Ensures latest ?v= script URLs load whenever online.
+  if(isEntryPoint(req)){
+    event.respondWith((async () => {
+      const cache = await caches.open(CACHE_VERSION);
+      try {
+        const res = await fetch(req);
+        if(res && res.status === 200) cache.put(req, res.clone()).catch(()=>{});
+        return res;
+      } catch(e){
+        const cached = await cache.match(req) || await cache.match('./index.html') || await cache.match('./');
+        return cached || new Response('Offline', { status: 503, statusText: 'Offline' });
+      }
+    })());
+    return;
+  }
+
+  // Everything else (versioned JS/CSS, icon, manifest, CDN): cache-first, background refresh.
+  // ignoreSearch=false so ?v=N is respected — a v-mismatch triggers a proper network fetch.
   event.respondWith((async () => {
     const cache = await caches.open(CACHE_VERSION);
-    const cached = await cache.match(req, { ignoreSearch: true });
+    const cached = await cache.match(req);
     const fetchPromise = fetch(req).then(res => {
-      // Cache successful, non-opaque, GET responses for next time.
       if(res && res.status === 200 && (res.type === 'basic' || res.type === 'cors')){
         cache.put(req, res.clone()).catch(()=>{});
       }
       return res;
-    }).catch(() => cached); // offline → fall back to cache
+    }).catch(() => cached);
     return cached || fetchPromise;
   })());
 });

@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Vibe Tracker · MJM</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="board.css?v=210">
+<link rel="stylesheet" href="board.css?v=211">
 <link rel="icon" type="image/svg+xml" href="icon.svg">
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="manifest" href="manifest.webmanifest">
@@ -41,7 +41,30 @@
   // sync via supabase.js's 'online' handler when network returns.
   if('serviceWorker' in navigator){
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js').catch(e => console.warn('[sw] register failed', e));
+      navigator.serviceWorker.register('./sw.js').then(reg => {
+        // Poll for SW updates so users pick up new code without needing to close the PWA.
+        try { reg.update(); } catch(e){}
+        setInterval(() => { try { reg.update(); } catch(e){} }, 60_000);
+        // When an updated SW installs, tell it to skip waiting so it activates immediately.
+        reg.addEventListener('updatefound', () => {
+          const nw = reg.installing;
+          if(!nw) return;
+          nw.addEventListener('statechange', () => {
+            if(nw.state === 'installed' && navigator.serviceWorker.controller){
+              try { nw.postMessage({ type: 'SKIP_WAITING' }); } catch(e){}
+            }
+          });
+        });
+      }).catch(e => console.warn('[sw] register failed', e));
+      // Reload once per session when a new SW takes over so users get the fresh app shell.
+      let _swReloaded = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if(_swReloaded) return;
+        if(sessionStorage.getItem('pt_sw_reloaded') === '1') return;
+        _swReloaded = true;
+        sessionStorage.setItem('pt_sw_reloaded', '1');
+        window.location.reload();
+      });
     });
   }
 </script>
@@ -435,7 +458,7 @@
 <!-- hidden file input -->
 <input type="file" id="ssInput" accept="image/*" style="display:none" multiple />
 
-<script src="board.js?v=210"></script>
-<script src="supabase.js?v=210"></script>
+<script src="board.js?v=211"></script>
+<script src="supabase.js?v=211"></script>
 </body>
 </html>
