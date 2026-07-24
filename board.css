@@ -42,6 +42,8 @@ body{
   overflow:hidden;
   -webkit-text-size-adjust:100%;
   text-size-adjust:100%;
+  /* Global 5% zoom-out — shrinks the whole app uniformly. Layout math scales cleanly. */
+  zoom: 0.95;
 }
 
 /* Prevent iOS auto-zoom on any form input (requires font-size >= 16px). */
@@ -354,7 +356,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .col-count{font-size:12px;color:var(--text3);background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:2px 8px;}
 .col-menu-btn{background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px;padding:2px 4px;border-radius:4px;transition:all .12s;line-height:1;}
 .col-menu-btn:hover{color:var(--text);background:var(--surface2);}
-.col-body{flex:1;overflow-y:auto;padding:11px 11px 9px;display:flex;flex-direction:column;gap:8px;scrollbar-gutter:stable;}
+.col-body{flex:1;overflow-y:auto;padding:11px 11px 9px;display:flex;flex-direction:column;gap:12px;scrollbar-gutter:stable;}
 .col-body::-webkit-scrollbar{width:4px;}
 .col-body::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px;}
 .col-add-btn{margin:8px 12px 12px;padding:8px 0;background:none;border:1px dashed var(--border2);border-radius:8px;color:var(--text3);cursor:pointer;font-size:13px;font-family:'Plus Jakarta Sans',sans-serif;transition:all .15s;text-align:center;}
