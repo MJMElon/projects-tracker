@@ -416,19 +416,17 @@ function isOldDone(t){
 // Kept as a no-op stub so call sites still work; old hidden recurring rows in storage
 // will surface again on next render.
 function isFutureScheduled(t){ return false; }
-function getOldDoneShown(){
-  try { return JSON.parse(localStorage.getItem('pt_show_old_done') || '{}'); }
-  catch(e){ return {}; }
-}
+// In-memory only: revealing "completed over 30 days" tasks lasts for the current session
+// and auto-collapses again on any page refresh / PWA reopen.
+let _showOldDone = {};
+try { localStorage.removeItem('pt_show_old_done'); } catch(e){} // one-time cleanup of the old persistent key
 function isOldDoneShown(projectId, phase){
-  return !!getOldDoneShown()[`${projectId}:${phase}`];
+  return !!_showOldDone[`${projectId}:${phase}`];
 }
 function toggleOldDoneShown(phase){
   const pid = S.activeProject; if(!pid) return;
-  const map = getOldDoneShown();
   const key = `${pid}:${phase}`;
-  map[key] = !map[key];
-  localStorage.setItem('pt_show_old_done', JSON.stringify(map));
+  _showOldDone[key] = !_showOldDone[key];
   render();
 }
 
