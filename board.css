@@ -547,6 +547,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .h-dot.created{background:var(--blue);}
 .h-dot.completed{background:var(--accent);}
 .h-dot.reopened{background:var(--orange);}
+.h-dot.assigned{background:var(--purple);}
 .h-info{display:flex;flex-direction:column;gap:3px;}
 .h-label{font-size:14px;color:var(--text2);}
 .h-time{font-size:11px;color:var(--text3);}

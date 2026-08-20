@@ -798,6 +798,7 @@ function renderDrawer(){
       if(h.type==='created') return `<div class="h-entry"><div class="h-dot created"></div><div class="h-info"><div class="h-label">Task created${byTxt}</div><div class="h-time">${fmtTs(h.ts)}</div></div></div>`;
       if(h.type==='completed') return `<div class="h-entry"><div class="h-dot completed"></div><div class="h-info"><div class="h-label">Marked done${byTxt}${h.elapsed&&fmtMs(h.elapsed)?` · <span style="color:var(--accent)">${fmtMs(h.elapsed)}</span>`:''}</div><div class="h-time">${fmtTs(h.ts)}</div></div></div>`;
       if(h.type==='reopened') return `<div class="h-entry"><div class="h-dot reopened"></div><div class="h-info"><div class="h-label">Reopened${byTxt}</div><div class="h-time">${fmtTs(h.ts)}</div>${h.reason?`<div class="h-reason">"${esc(h.reason)}"</div>`:''}</div></div>`;
+      if(h.type==='assigned') return `<div class="h-entry"><div class="h-dot assigned"></div><div class="h-info"><div class="h-label">${_assignLabel(h)}${byTxt}</div><div class="h-time">${fmtTs(h.ts)}</div></div></div>`;
       return '';
     }).join('');
     body+=`<div class="d-section"><div class="d-section-label">Activity</div><div class="h-list">${histHtml}</div></div>`;
@@ -970,6 +971,19 @@ function renderNestedDrawer(){
   </button>`;
   body+=`<div class="d-section"><div class="d-section-label">Screenshots (${shots.length})</div><div class="screenshots-grid">${ssGrid}</div></div>`;
 
+  if(n.history?.length){
+    const entries=[...n.history].reverse();
+    const histHtml=entries.map(h=>{
+      const byTxt = h.by?.name ? ` <span class="h-by">by ${esc(h.by.name)}</span>` : '';
+      if(h.type==='created')  return `<div class="h-entry"><div class="h-dot created"></div><div class="h-info"><div class="h-label">Nested subtask created${byTxt}</div><div class="h-time">${fmtTs(h.ts)}</div></div></div>`;
+      if(h.type==='completed')return `<div class="h-entry"><div class="h-dot completed"></div><div class="h-info"><div class="h-label">Marked done${byTxt}${h.elapsed&&fmtMsSub(h.elapsed)?` · <span style="color:var(--accent)">${fmtMsSub(h.elapsed)}</span>`:''}</div><div class="h-time">${fmtTs(h.ts)}</div></div></div>`;
+      if(h.type==='reopened') return `<div class="h-entry"><div class="h-dot reopened"></div><div class="h-info"><div class="h-label">Reopened${byTxt}</div><div class="h-time">${fmtTs(h.ts)}</div>${h.reason?`<div class="h-reason">"${esc(h.reason)}"</div>`:''}</div></div>`;
+      if(h.type==='assigned') return `<div class="h-entry"><div class="h-dot assigned"></div><div class="h-info"><div class="h-label">${_assignLabel(h)}${byTxt}</div><div class="h-time">${fmtTs(h.ts)}</div></div></div>`;
+      return '';
+    }).join('');
+    body+=`<div class="d-section"><div class="d-section-label">Activity</div><div class="h-list">${histHtml}</div></div>`;
+  }
+
   _drawerBodySetHtml(body);
   document.getElementById('drawerFoot').innerHTML=`
     <button class="btn btn-danger btn-sm" onclick="deleteNestedFromDrawer()">🗑 Delete Subtask</button>`;
@@ -991,7 +1005,9 @@ function saveNestedTitleFromDetail(){
 function saveNestedAssignee(){
   const ctx=_curNested(); if(!ctx) return;
   const sel=document.getElementById('nestAssignSel_'+ctx.n.id);
-  ctx.n.assignee = sel ? (sel.value || null) : ctx.n.assignee;
+  const newVal = sel ? (sel.value || null) : ctx.n.assignee;
+  _logAssign(ctx.n, ctx.n.assignee, newVal);
+  ctx.n.assignee = newVal;
   save(); renderDrawer();
 }
 function saveNestedDates(){
@@ -1150,6 +1166,7 @@ function renderSubtaskDrawer(){
       if(h.type==='created') return `<div class="h-entry"><div class="h-dot created"></div><div class="h-info"><div class="h-label">Subtask created${byTxt}</div><div class="h-time">${fmtTs(h.ts)}</div></div></div>`;
       if(h.type==='completed') return `<div class="h-entry"><div class="h-dot completed"></div><div class="h-info"><div class="h-label">Marked done${byTxt}${h.elapsed&&fmtMsSub(h.elapsed)?` · <span style="color:var(--accent)">${fmtMsSub(h.elapsed)}</span>`:''}</div><div class="h-time">${fmtTs(h.ts)}</div></div></div>`;
       if(h.type==='reopened') return `<div class="h-entry"><div class="h-dot reopened"></div><div class="h-info"><div class="h-label">Reopened${byTxt}</div><div class="h-time">${fmtTs(h.ts)}</div>${h.reason?`<div class="h-reason">"${esc(h.reason)}"</div>`:''}</div></div>`;
+      if(h.type==='assigned') return `<div class="h-entry"><div class="h-dot assigned"></div><div class="h-info"><div class="h-label">${_assignLabel(h)}${byTxt}</div><div class="h-time">${fmtTs(h.ts)}</div></div></div>`;
       return '';
     }).join('');
     body+=`<div class="d-section"><div class="d-section-label">Activity</div><div class="h-list">${histHtml}</div></div>`;
@@ -1200,7 +1217,9 @@ function saveSubAssignee(taskId,idx){
   const t=S.tasks.find(t=>t.id===taskId); if(!t||!t.subtasks) return;
   const s=t.subtasks[idx]; if(!s) return;
   const inp=document.getElementById('subAssign_'+s.id);
-  s.assignee=inp?(inp.value||'').trim().replace(/^@/,''):s.assignee;
+  const newVal = inp?(inp.value||'').trim().replace(/^@/,''):s.assignee;
+  _logAssign(s, s.assignee, newVal);
+  s.assignee = newVal;
   save(); renderDrawer(); render();
 }
 function saveSubPhase(taskId,idx){
@@ -1497,19 +1516,60 @@ function closeAssignPicker(){
   const pop = document.getElementById('assignPop');
   if(pop) pop.classList.remove('open');
 }
+// Append an 'assigned' history entry when the assignee actually changed. Applies to
+// main tasks, subtasks, and nested subtasks — all three share the same {history:[]} shape.
+// Produce the readable label for an 'assigned' history entry.
+function _assignLabel(h){
+  const to = h.to, from = h.from;
+  if(to && from) return `Reassigned from <span style="color:var(--text)">@${esc(from)}</span> to <span style="color:var(--accent)">@${esc(to)}</span>`;
+  if(to)          return `Assigned to <span style="color:var(--accent)">@${esc(to)}</span>`;
+  if(from)        return `Unassigned <span style="color:var(--text3)">(was @${esc(from)})</span>`;
+  return 'Assignment changed';
+}
+
+function _logAssign(obj, from, to){
+  if(!obj) return;
+  const norm = v => (v == null || v === '') ? null : String(v);
+  if(norm(from) === norm(to)) return; // no-op (same value)
+  if(!Array.isArray(obj.history)) obj.history = [];
+  obj.history.push({
+    type: 'assigned',
+    ts: Date.now(),
+    by: currentActor(),
+    from: norm(from),
+    to: norm(to)
+  });
+}
+
 function pickAssignee(kind, ref, name){
   if(kind === 'task'){
     const t = S.tasks.find(t => t.id === ref);
-    if(t){ t.assignee = name; save(); render(); if(_drawerId === t.id) renderDrawer(); }
+    if(t){
+      _logAssign(t, t.assignee, name);
+      t.assignee = name;
+      save(); render();
+      if(_drawerId === t.id) renderDrawer();
+    }
   } else if(kind === 'nest'){
     const [tid, six, nix] = ref.split(':');
     const t = S.tasks.find(t => t.id === tid);
     const n = t?.subtasks?.[+six]?.subtasks?.[+nix];
-    if(n){ n.assignee = name; save(); render(); if(_drawerId === tid) renderDrawer(); }
+    if(n){
+      _logAssign(n, n.assignee, name);
+      n.assignee = name;
+      save(); render();
+      if(_drawerId === tid) renderDrawer();
+    }
   } else {
     const [tid, ix] = ref.split(':');
     const t = S.tasks.find(t => t.id === tid);
-    if(t?.subtasks?.[+ix]){ t.subtasks[+ix].assignee = name; save(); render(); if(_drawerId === tid) renderDrawer(); }
+    const s = t?.subtasks?.[+ix];
+    if(s){
+      _logAssign(s, s.assignee, name);
+      s.assignee = name;
+      save(); render();
+      if(_drawerId === tid) renderDrawer();
+    }
   }
   closeAssignPicker();
 }
@@ -1685,7 +1745,12 @@ function saveTask(){
     projectId:S.activeProject
   };
   if(_editId){
-    const t=S.tasks.find(t=>t.id===_editId); if(t) Object.assign(t,data);
+    const t=S.tasks.find(t=>t.id===_editId);
+    if(t){
+      // Log assignee change from the Edit-Task modal too, so it shows in the activity feed.
+      _logAssign(t, t.assignee, data.assignee);
+      Object.assign(t,data);
+    }
   } else {
     const now=Date.now();
     S.tasks.push({id:uid(),done:false,createdAt:now,startedAt:now,screenshots:[],subtasks:[],history:[{type:'created',ts:now,by:currentActor()}],...data});
