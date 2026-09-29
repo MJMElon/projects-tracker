@@ -33,6 +33,7 @@ let _syncTimer = null;
 let _syncing = false;
 let _pendingSync = false;
 let _syncPending = false; // true while the debounced timer is set OR we have queued work
+let _pushedAt = {};       // id -> ms of last successful push (lets hydrate spot stale reads)
 
 // ── task shape mapping (client ↔ db) ──────────────────────────
 // Client task: {id, projectId, title, desc, phase, urgency, assignee, due, startDate,
@@ -201,6 +202,7 @@ async function rpcFetch(fnName, args = {}){
 }
 
 async function hydrate(){
+  const started = Date.now();
   console.log('[hydrate] fetching get_my_projects');
   const { data: projects, error: pe } = await rpcFetch('get_my_projects');
   console.log('[hydrate] projects returned. count:', projects?.length, 'error:', pe?.message);
@@ -227,18 +229,52 @@ async function hydrate(){
     return;
   }
 
-  S.projects = (projects||[]).map(rowToProject);
-  S.tasks = (tasks||[]).map(rowToTask);
+  // Merge instead of overwrite: the user may have clicked/edited while the fetch was in
+  // flight (focus/visibility resyncs fire right as they click). Blindly replacing S here
+  // made a just-ticked task "jump back" and silently dropped the edit from the push queue.
+  const uid = _user?.id;
+  const mp = _mergeHydrated(S.projects, (projects||[]).map(rowToProject), _snap.projects,
+    p => projectToRow(p, uid), started, () => true);
+  const projIds = new Set(mp.list.map(p => p.id));
+  const mt = _mergeHydrated(S.tasks, (tasks||[]).map(rowToTask), _snap.tasks,
+    t => taskToRow(t, uid), started, t => isUuid(t.projectId) && projIds.has(t.projectId));
+  S.projects = mp.list;
+  S.tasks = mt.list;
+  _snap = { projects: mp.snap, tasks: mt.snap };
   if(S.projects.length && !S.projects.find(p=>p.id===S.activeProject)){
     // Pick the project at the top of the user's saved ordering (not the raw DB order).
     const ordered = (typeof sortedProjects === 'function') ? sortedProjects() : S.projects;
     S.activeProject = (ordered[0] || S.projects[0]).id;
   }
+  // Local edits kept by the merge still need to reach the server.
+  if(hasPendingChanges()) queueSync();
+}
 
-  // seed snapshot for diff
-  _snap = { projects: {}, tasks: {} };
-  S.projects.forEach(p => { _snap.projects[p.id] = JSON.stringify(projectToRow(p, _user?.id)); });
-  S.tasks.forEach(t => { _snap.tasks[t.id] = JSON.stringify(taskToRow(t, _user?.id)); });
+// Merge a fresh server list into local state, keeping any local edits the server
+// hasn't seen yet. Returns { list, snap } — the new local array and diff baseline.
+//  - pushed during this fetch → server copy may predate our write; keep local + current snap
+//  - local dirty (pending insert/update/delete) → keep local; snap = server row so it re-pushes
+//  - otherwise → take the server copy (picks up other people's changes / deletions)
+function _mergeHydrated(localArr, serverArr, oldSnap, toRow, started, keepLocalOnly){
+  const localById = new Map(localArr.map(x => [x.id, x]));
+  const serverById = new Map(serverArr.map(x => [x.id, x]));
+  const list = [], snap = {};
+  for(const id of new Set([...serverById.keys(), ...localById.keys()])){
+    const local = localById.get(id), server = serverById.get(id), prev = oldSnap[id];
+    if((_pushedAt[id] || 0) >= started){
+      if(local) list.push(local);
+      if(prev !== undefined) snap[id] = prev;
+      continue;
+    }
+    const dirty = local ? (prev === undefined || JSON.stringify(toRow(local)) !== prev) : prev !== undefined;
+    if(dirty){
+      if(local && (server || keepLocalOnly(local))) list.push(local);
+      if(server) snap[id] = JSON.stringify(toRow(server));
+      continue;
+    }
+    if(server){ list.push(server); snap[id] = JSON.stringify(toRow(server)); }
+  }
+  return { list, snap };
 }
 
 // ═══════════════════════════════════════════════
@@ -287,18 +323,18 @@ async function syncNow(){
 
     if(projInserts.length){
       const r = await _tryOp(sb.from('projects').insert(projInserts));
-      if(r.ok) projInserts.forEach(row => { _snap.projects[row.id] = JSON.stringify(row); });
+      if(r.ok) projInserts.forEach(row => { _snap.projects[row.id] = JSON.stringify(row); _pushedAt[row.id] = Date.now(); });
       else console.warn('[sync] project insert failed (will retry)', r.error);
     }
     for(const row of projUpdates){
       const { id, ...fields } = row;
       const r = await _tryOp(sb.from('projects').update(fields).eq('id', id));
-      if(r.ok) _snap.projects[id] = JSON.stringify(row);
+      if(r.ok){ _snap.projects[id] = JSON.stringify(row); _pushedAt[id] = Date.now(); }
       else console.warn('[sync] project update failed (will retry)', id, r.error);
     }
     if(projDeletes.length){
       const r = await _tryOp(sb.from('projects').delete().in('id', projDeletes));
-      if(r.ok) projDeletes.forEach(id => delete _snap.projects[id]);
+      if(r.ok) projDeletes.forEach(id => { delete _snap.projects[id]; _pushedAt[id] = Date.now(); });
       else console.warn('[sync] project delete failed (will retry)', r.error);
     }
 
@@ -317,19 +353,19 @@ async function syncNow(){
 
     if(taskInserts.length){
       const r = await _tryOp(sb.from('tasks').insert(taskInserts));
-      if(r.ok) taskInserts.forEach(row => { _snap.tasks[row.id] = JSON.stringify(row); });
+      if(r.ok) taskInserts.forEach(row => { _snap.tasks[row.id] = JSON.stringify(row); _pushedAt[row.id] = Date.now(); });
       else console.warn('[sync] task insert failed (will retry)', r.error);
     }
     // Do task updates one-by-one so a single per-task failure doesn't block the rest.
     for(const row of taskUpdates){
       const { id, ...fields } = row;
       const r = await _tryOp(sb.from('tasks').update(fields).eq('id', id));
-      if(r.ok) _snap.tasks[id] = JSON.stringify(row);
+      if(r.ok){ _snap.tasks[id] = JSON.stringify(row); _pushedAt[id] = Date.now(); }
       else console.warn('[sync] task update failed (will retry)', id, r.error);
     }
     if(taskDeletes.length){
       const r = await _tryOp(sb.from('tasks').delete().in('id', taskDeletes));
-      if(r.ok) taskDeletes.forEach(id => delete _snap.tasks[id]);
+      if(r.ok) taskDeletes.forEach(id => { delete _snap.tasks[id]; _pushedAt[id] = Date.now(); });
       else console.warn('[sync] task delete failed (will retry)', r.error);
     }
   } finally {
