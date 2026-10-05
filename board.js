@@ -459,6 +459,8 @@ function renderBoard(){
     });
     items.sort((a,b)=>{
       if(a.done!==b.done) return a.done?1:-1;
+      // Completed tasks: most recently completed first.
+      if(a.done) return (b.task.completedAt||0)-(a.task.completedAt||0);
       if(a.order!==b.order) return a.order-b.order;
       return 0;
     });

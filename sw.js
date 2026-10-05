@@ -11,7 +11,7 @@
 //
 // IMPORTANT: bump BOTH APP_VERSION (matches ?v= in index.html) AND CACHE_VERSION on every deploy.
 
-const APP_VERSION = 217;
+const APP_VERSION = 218;
 const CACHE_VERSION = 'vt-v' + APP_VERSION;
 
 const APP_SHELL = [
